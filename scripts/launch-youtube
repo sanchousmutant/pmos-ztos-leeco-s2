@@ -50,7 +50,7 @@ if [ -d "$UBLOCK_DIR" ]; then
     EXT_FLAG="--load-extension=$UBLOCK_DIR --disable-extensions-except=$UBLOCK_DIR"
 fi
 
-CHROMIUM_CMD="chromium \
+CHROMIUM_CMD="/usr/lib/chromium/chromium \
     --app=\"$APP_URL\" \
     --user-data-dir=/home/pmos/.config/youtube-app \
     --class=youtube \
