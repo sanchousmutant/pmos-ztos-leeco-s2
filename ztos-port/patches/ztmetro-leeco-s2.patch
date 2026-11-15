@@ -1,0 +1,163 @@
+diff --git a/ztmetro/ztmetro.c b/ztmetro/ztmetro.c
+index 0e0a776..af44f15 100644
+--- a/ztmetro/ztmetro.c
++++ b/ztmetro/ztmetro.c
+@@ -882,6 +882,10 @@ struct zt_server {
+ 	int hwkey_held;			/* the nav button whose own key is down; -1: none */
+ 	bool hwkey_long;		/* ... and held long enough to count as a long press */
+ 	struct wl_event_source *hwkey_timer;
++	bool power_key_held;
++	bool power_key_long;
++	bool power_woke_screen;
++	struct wl_event_source *power_key_timer;
+ 
+ 	/* on-screen keyboard */
+ 	struct wlr_keyboard vkbd;
+@@ -948,6 +952,7 @@ static void auth_input(struct zt_server *, uint32_t, const char *);
+ static void auth_submit(struct zt_server *);
+ static void auth_finish(struct zt_server *);
+ static void draw_dialog(struct zt_server *);
++static void dialog_close(struct zt_server *);
+ static void ftrace_mark(struct zt_server *server, const char *what, double ms);
+ static double ftrace_clock(void);
+ static void run_detached(const char *, const char *, const char *, const char *);
+@@ -5120,7 +5125,7 @@ static int read_battery(void) {
+ 		if (capacity >= 0) return capacity;
+ 	}
+ #endif
+-	static const char *names[] = { "battery", "max77705-battery", "max170xx_battery", NULL };
++	static const char *names[] = { "battery", "qcom-battery", "max77705-battery", "max170xx_battery", NULL };
+ 	for (int i = 0; names[i]; i++) {
+ 		char path[128];
+ 		int capacity = -1;
+@@ -7571,7 +7576,11 @@ static pid_t *started_pid(struct zt_server *server, const char *command) {
+  * buffers in CMA, and after a few restarts the new shell cannot allocate one
+  * and the screen stays blank. */
+ static void close_inherited(void) {
+-	close_range(3, ~0U, 0);
++#ifdef SYS_close_range
++	syscall(SYS_close_range, 3, ~0U, 0);
++#else
++	for (int fd = 3; fd < 1024; fd++) close(fd);
++#endif
+ }
+ 
+ static void launch(struct zt_server *server, const char *command) {
+@@ -9695,6 +9704,10 @@ static void nav_activate(struct zt_server *server, int index) {
+ 		}
+ 	} else if (index == NAV_BACK) {
+ 		wlr_log(WLR_INFO, "nav: back");
++		if (server->dialog_open) {
++			dialog_close(server);
++			return;
++		}
+ 		if (server->shade_open || server->shade_h > 10.0f) {
+ 			shade_set_open(server, false);
+ 			return;
+@@ -10194,6 +10207,10 @@ static void dialog_handle_action(struct zt_server *server, const char *act) {
+ 			"sudo -n systemctl stop zrn-sensorhub.service ztoscsf-sensorhub.service zrnsensord.service ztoscsf-sensord.service 2>/dev/null",
+ 			NULL);
+ 		note_add(server, "ztOSCoreSensorFramework", "Sensor Hub Stopped", "Sensor hub has been stopped for this boot.");
++	} else if (strcmp(act, "poweroff") == 0) {
++		run_detached("/bin/sh", "-c", "sync; sudo /sbin/poweroff || sudo poweroff || poweroff", NULL);
++	} else if (strcmp(act, "reboot") == 0) {
++		run_detached("/bin/sh", "-c", "sync; sudo /sbin/reboot || sudo reboot || reboot", NULL);
+ 	} else if (act[0] == '/' || strchr(act, ' ')) {
+ 		run_detached("/bin/sh", "-c", act, NULL);
+ 	}
+@@ -10201,6 +10218,7 @@ static void dialog_handle_action(struct zt_server *server, const char *act) {
+ 
+ static void dialog_show(struct zt_server *server, const char *title, const char *text,
+ 		const char *btn1, const char *act1, const char *btn2, const char *act2) {
++	wlr_log(WLR_INFO, "dialog_show: title='%s' btn1='%s' btn2='%s'", title ? title : "", btn1 ? btn1 : "", btn2 ? btn2 : "");
+     if (server->auth_active && (!act1 || strcmp(act1, "auth_submit"))) return;
+ 	snprintf(server->dialog_title, sizeof(server->dialog_title), "%s", title ? title : "Dialog");
+ 	snprintf(server->dialog_text, sizeof(server->dialog_text), "%s", text ? text : "");
+@@ -12485,6 +12503,22 @@ static int hwkey_nav(uint32_t keycode) {
+ 	return -1;
+ }
+ 
++static int power_key_held_fired(void *data) {
++	struct zt_server *server = data;
++	wlr_log(WLR_INFO, "power_key_held_fired: held=%d long=%d screen_on=%d",
++		server->power_key_held, server->power_key_long, server->screen_on);
++	if (server->power_key_held && !server->power_key_long) {
++		server->power_key_long = true;
++		if (!server->screen_on) {
++			screen_set(server, true);
++		}
++		activity(server);
++		hap(server, HAP_HEAVY, HG_SYSTEM);
++		dialog_show(server, "Питание", "Выберите действие:", "Выключение", "poweroff", "Перезагрузка", "reboot");
++	}
++	return 0;
++}
++
+ static int hwkey_held_fired(void *data) {
+ 	struct zt_server *server = data;
+ 	if (server->hwkey_held >= 0 && !server->hwkey_long) {
+@@ -12543,12 +12577,32 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
+ 	struct zt_server *server = keyboard->server;
+ 	struct wlr_keyboard_key_event *event = data;
+ 	if (event->keycode == KEY_POWER) {
+-		/* the power key sleeps and wakes the screen, and goes no further */
++		wlr_log(WLR_INFO, "power_key: state=%d held=%d long=%d woke=%d screen_on=%d",
++			event->state, server->power_key_held, server->power_key_long,
++			server->power_woke_screen, server->screen_on);
+ 		if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+-			screen_set(server, !server->screen_on);
+-			if (server->screen_on) {
++			server->power_key_held = true;
++			server->power_key_long = false;
++			if (!server->screen_on) {
++				server->power_woke_screen = true;
++				screen_set(server, true);
+ 				activity(server);
++			} else {
++				server->power_woke_screen = false;
++			}
++			wl_event_source_timer_update(server->power_key_timer, 850);
++		} else {
++			wl_event_source_timer_update(server->power_key_timer, 0);
++			if (server->power_key_held && !server->power_key_long) {
++				if (server->dialog_open) {
++				dialog_close(server);
++				} else if (!server->power_woke_screen) {
++					screen_set(server, false);
++				}
+ 			}
++			server->power_key_held = false;
++			server->power_key_long = false;
++			server->power_woke_screen = false;
+ 		}
+ 		return;
+ 	}
+@@ -12601,6 +12655,20 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
+ 		}
+ 		return;
+ 	}
++	if (server->dialog_open && (event->keycode == KEY_VOLUMEUP || event->keycode == KEY_VOLUMEDOWN)) {
++		if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
++			if (event->keycode == KEY_VOLUMEUP) {
++				hap(server, HAP_TAP, HG_SYSTEM);
++				dialog_handle_action(server, server->dialog_act1);
++				dialog_close(server);
++			} else if (event->keycode == KEY_VOLUMEDOWN) {
++				hap(server, HAP_TAP, HG_SYSTEM);
++				dialog_handle_action(server, server->dialog_act2);
++				dialog_close(server);
++			}
++		}
++		return;
++	}
+ 	if (event->keycode == KEY_VOLUMEUP || event->keycode == KEY_VOLUMEDOWN) {
+ 		/* DemoLoop owns volume down; three presses stop it, touches never do. */
+ 		if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+@@ -14541,6 +14609,7 @@ int main(int argc, char *argv[]) {
+ 
+ 	server.long_press_timer = wl_event_loop_add_timer(server.loop, long_press_fired, &server);
+ 	server.hwkey_timer = wl_event_loop_add_timer(server.loop, hwkey_held_fired, &server);
++	server.power_key_timer = wl_event_loop_add_timer(server.loop, power_key_held_fired, &server);
+ 	server.press_timer = wl_event_loop_add_timer(server.loop, press_fired, &server);
+ 	server.key_repeat_timer = wl_event_loop_add_timer(server.loop, key_repeat_fired, &server);
+ 	server.repeat_index = -1;

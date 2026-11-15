@@ -1,0 +1,24 @@
+* text=auto eol=lf
+
+*.inf text eol=crlf
+*.cdf text eol=crlf
+
+*.png binary
+*.jpg binary
+*.wav binary
+*.img binary
+*.ko binary
+*.dtb binary
+*.fw binary
+*.bin binary
+*.dat binary
+*.cer binary
+*.cat binary
+*.cpio binary
+*.gz binary
+
+# Specific initramfs binaries without extensions
+/tiny_initramfs/bin/busybox binary
+/tiny_initramfs_switch/bin/busybox binary
+/tiny_initramfs_switch/sbin/adbd binary
+

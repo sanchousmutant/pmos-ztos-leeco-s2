@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Settings
+Comment=ztMETRO settings
+Exec=ztsettings
+Terminal=false
+Type=Application
+Icon=preferences-system
+Categories=System;Settings;

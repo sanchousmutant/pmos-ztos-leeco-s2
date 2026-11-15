@@ -1,0 +1,127 @@
+#!/sbin/openrc-run
+
+description="Create /dev/fb0 device nodes and bring the display up before the GUI"
+
+depend() {
+    before gui tinydm
+    after devfs udev udev-trigger localmount
+    need devfs
+}
+
+start() {
+    # mainline: DRM/KMS сам создаёт /dev/fb0 и /dev/dri; legacy-ноды не трогаем.
+    if [ -e /dev/dri/card0 ]; then
+        einfo "DRM/KMS detected - legacy framebuffer setup skipped"
+        eend 0
+        return 0
+    fi
+
+    ebegin "Setting up framebuffer device nodes"
+
+    # --- device nodes: always, they are cheap and never touch the panel ---
+    mkdir -p /dev/graphics 2>/dev/null
+    if [ ! -e /dev/graphics/fb0 ]; then
+        mknod /dev/graphics/fb0 c 29 0 2>/dev/null || true
+    fi
+    chmod 0666 /dev/graphics/fb0 2>/dev/null || true
+
+    rm -f /dev/fb0 2>/dev/null || true
+    ln -sf /dev/graphics/fb0 /dev/fb0 2>/dev/null || true
+    chmod 0666 /dev/fb0 2>/dev/null || true
+
+    # Xorg aborts when it cannot find a VT on this Android kernel
+    rm -f /dev/tty0 /dev/tty1 2>/dev/null || true
+
+    ls -la /dev/fb0 /dev/graphics/fb0 >> /var/log/fb-setup.log 2>&1
+
+    # --- display bring-up: best effort, and NEVER allowed to stall the boot ---
+    #
+    # On this kernel any /dev/fb0 access can block forever: the MDP's SMMU TLB
+    # sync (apps_iommu, client mdp_ns) times out and __sync_tlb() retries in a
+    # ~1 s loop, flooding the kernel log with MDSS register dumps.  A synchronous
+    # fb write here would therefore hang the whole "default" runlevel, so every
+    # step is time-boxed and failures are non-fatal.
+    #
+    # Touch /.no-fb to skip this block entirely - useful when a clean boot log
+    # is needed, because the register dump flood overruns the ramoops buffer.
+    #
+    # NOTE: as in gui.init, returning 0 records the service as *started*, so a
+    # later `rc-service fb-setup start` is a no-op.  Use `restart` instead.
+    if [ -e /.no-fb ]; then
+        einfo "display bring-up skipped (/.no-fb present)"
+        ewarn "service marked started - use 'rc-service fb-setup restart' after removing /.no-fb"
+        eend 0
+        return 0
+    fi
+
+    fb_try() {
+        /usr/bin/timeout 8 sh -c "$1" 2>/dev/null \
+            || echo "WARN: timed out or failed: $1" >> /var/log/fb-setup.log
+    }
+
+    echo "--- display bring-up $(date) ---" >> /var/log/fb-setup.log
+
+    # ------------------------------------------------------------------
+    # Optional: trace the MDSS fb/dsi paths.  Touch /.fb-ddebug to enable.
+    #
+    # This has to be done from userspace because dynamic debug does not
+    # survive a reboot.  It is enabled here - after probe, before Xorg -
+    # so the single open() of /dev/fb0 by Xorg is fully traced, including
+    # the name of the function that called mdss_fb_blank_sub().
+    #
+    # Verification for the next boot:
+    #     dmesg | grep -c "blank powerdown called"     -> must be 0
+    # Without dynamic debug the equivalent check is the touchscreen
+    # notifier, which is not pr_debug and always lands in dmesg:
+    #     dmesg | grep "lcd status"                    -> no FB_BLANK_POWERDOWN
+    # ------------------------------------------------------------------
+    if [ -e /.fb-ddebug ] && [ -w /sys/kernel/debug/dynamic_debug/control ]; then
+        for m in mdss_fb.c mdss_dsi.c mdss_dsi_host.c; do
+            echo "file $m +p" >> /sys/kernel/debug/dynamic_debug/control 2>/dev/null
+        done
+        echo "ddebug: enabled mdss_fb/mdss_dsi/mdss_dsi_host" \
+            >> /var/log/fb-setup.log
+    fi
+
+    # ------------------------------------------------------------------
+    # DO NOT RUN test_fb / fb_pan0 HERE.
+    #
+    # Both open() and then close() /dev/fb0.  When the LAST file descriptor on
+    # fb0 is closed, mdss_fb_release_all() calls
+    #     mdss_fb_blank_sub(FB_BLANK_POWERDOWN, ...)
+    # which runs mdss_dsi_blank() -> mdss_dsi_off() ->
+    # mdss_dsi_panel_power_off(): asserts the panel reset line and switches the
+    # LAB/IBB regulators off.  The panel is then power-cycled before Xorg has
+    # even started, and it comes back BLACK, because
+    #
+    #     mdss_fb_set_backlight()  (mdss_fb.c)
+    #         if (... || mfd->panel_info->cont_splash_enabled) {
+    #                 mfd->unset_bl_level = bkl_lvl;
+    #                 return;              <-- backlight never programmed
+    #         }
+    #
+    # While cont_splash_enabled is set (and it is, for the whole lifetime of
+    # this boot) the kernel NEVER writes the WLED backlight.  It relies entirely
+    # on whatever the bootloader left behind - so once the panel is powered
+    # down, nothing can light it up again.
+    #
+    # The panel is already ON at this point: lk2nd leaves it on and the kernel
+    # takes it over via continuous splash.  The correct action is therefore to
+    # touch NOTHING, so that Xorg remains the only opener of /dev/fb0.
+    #
+    # Verified 19.09.2026 with dynamic debug:
+    #   mdss_fb_blank_sub: mdss_fb_release_all+0x320/0x564 mode:4
+    #   mdss_fb_blank_sub: blank powerdown called
+    #   mdss_fb_blank_blank: Transitioning from 1 --> 0
+    #   mdss_fb_stop_disp_thread: stop display thread fb0
+    # ------------------------------------------------------------------
+    echo "display: not touching /dev/fb0 (continuous splash is active)" \
+        >> /var/log/fb-setup.log
+
+    # The backlight LEDs are plain LED class devices - writing them does not
+    # open /dev/fb0, so this is safe and does not disturb the panel.
+    fb_try 'echo 255 > /sys/class/leds/lcd-backlight/brightness'
+    fb_try 'echo 2048 > /sys/class/leds/wled/brightness'
+
+    eend 0
+}

@@ -1,0 +1,14 @@
+# Configuration for /etc/init.d/wayland
+# Compositor to launch: "ztmetro" (recommended), "labwc", "cage", or "weston"
+COMPOSITOR="ztmetro"
+
+# Application to launch inside compositor (default: zrn-session kiosk)
+CAGE_APP="/usr/local/bin/zrn-session"
+
+# Display scale (DPI): 2.0 recommended for 1080x1920 5.5" screen (540x960 logical)
+SCALE="2.0"
+
+# User and session info
+WAYLAND_USER="pmos"
+WAYLAND_UID=1000
+WAYLAND_GID=1000

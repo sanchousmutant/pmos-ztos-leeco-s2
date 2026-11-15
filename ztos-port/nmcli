@@ -1,0 +1,266 @@
+#!/bin/sh
+# nmcli compatibility bridge for postmarketOS / Alpine Linux (wpa_supplicant + rfkill)
+# Emulates NetworkManager's nmcli CLI subset required by ztOS (ztmetro, ztsettings, ztdevices).
+
+IFACE="wlan0"
+
+# Parse global options (-t, -f <fields>, -w <timeout>)
+TERSE=0
+FIELDS=""
+TIMEOUT=15
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -t|--terse)
+            TERSE=1
+            shift
+            ;;
+        -f|--fields)
+            FIELDS="$2"
+            shift 2
+            ;;
+        -w|--wait)
+            TIMEOUT="$2"
+            shift 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+CMD1="$1"
+CMD2="$2"
+CMD3="$3"
+
+is_wifi_blocked() {
+    if rfkill list wlan 2>/dev/null | grep -qi "Soft blocked: yes"; then
+        return 0
+    fi
+    return 1
+}
+
+get_current_ssid() {
+    wpa_cli -i "$IFACE" status 2>/dev/null | awk -F= '/^ssid=/ {print $2}'
+}
+
+case "$CMD1" in
+    radio)
+        case "$CMD2" in
+            wifi)
+                case "$CMD3" in
+                    on)
+                        rfkill unblock wlan 2>/dev/null || true
+                        ip link set "$IFACE" up 2>/dev/null || sudo ip link set "$IFACE" up 2>/dev/null || true
+                        if ! pidof wpa_supplicant >/dev/null 2>&1; then
+                            sudo wpa_supplicant -B -i "$IFACE" -c /etc/wpa_supplicant/wpa_supplicant.conf 2>/dev/null || true
+                        fi
+                        wpa_cli -i "$IFACE" reassociate >/dev/null 2>&1 || true
+                        wpa_cli -i "$IFACE" scan >/dev/null 2>&1 || true
+                        exit 0
+                        ;;
+                    off)
+                        rfkill block wlan 2>/dev/null || true
+                        exit 0
+                        ;;
+                    "")
+                        if is_wifi_blocked; then
+                            echo "disabled"
+                        elif [ -d "/sys/class/net/$IFACE" ]; then
+                            echo "enabled"
+                        else
+                            echo "disabled"
+                        fi
+                        exit 0
+                        ;;
+                esac
+                ;;
+        esac
+        ;;
+
+    device|dev)
+        case "$CMD2" in
+            wifi)
+                case "$CMD3" in
+                    list)
+                        if is_wifi_blocked; then
+                            exit 0
+                        fi
+
+                        wpa_cli -i "$IFACE" scan >/dev/null 2>&1 || true
+
+                        CUR_SSID=$(get_current_ssid)
+
+                        wpa_cli -i "$IFACE" scan_results 2>/dev/null | tail -n +2 | while IFS="	" read -r bssid freq level flags ssid; do
+                            [ -z "$ssid" ] && continue
+
+                            dbm=$(echo "$level" | tr -d '-')
+                            if [ -n "$dbm" ] && [ "$dbm" -gt 0 ] 2>/dev/null; then
+                                sig=$(( (100 - dbm) * 2 ))
+                                [ "$sig" -gt 100 ] && sig=100
+                                [ "$sig" -lt 0 ] && sig=0
+                            else
+                                sig=50
+                            fi
+
+                            sec="--"
+                            case "$flags" in
+                                *WPA2*) sec="WPA2" ;;
+                                *WPA*)  sec="WPA" ;;
+                                *WEP*)  sec="WEP" ;;
+                            esac
+
+                            in_use=""
+                            if [ -n "$CUR_SSID" ] && [ "$ssid" = "$CUR_SSID" ]; then
+                                in_use="*"
+                            fi
+
+                            echo "${in_use}:${ssid}:${sig}:${sec}"
+                        done
+                        exit 0
+                        ;;
+                    connect)
+                        shift 3
+                        TARGET_SSID="$1"
+                        TARGET_PASS=""
+                        if [ "$2" = "password" ]; then
+                            TARGET_PASS="$3"
+                        fi
+                        if [ -x /usr/local/bin/wifi-connect ]; then
+                            /usr/local/bin/wifi-connect "$TARGET_SSID" "$TARGET_PASS"
+                            exit $?
+                        elif [ -x /root/scripts/wifi-connect.sh ]; then
+                            /root/scripts/wifi-connect.sh "$TARGET_SSID" "$TARGET_PASS"
+                            exit $?
+                        else
+                            ID=$(wpa_cli -i "$IFACE" add_network 2>/dev/null | tail -n 1)
+                            wpa_cli -i "$IFACE" set_network "$ID" ssid "\"$TARGET_SSID\"" >/dev/null 2>&1
+                            if [ -n "$TARGET_PASS" ]; then
+                                wpa_cli -i "$IFACE" set_network "$ID" psk "\"$TARGET_PASS\"" >/dev/null 2>&1
+                            else
+                                wpa_cli -i "$IFACE" set_network "$ID" key_mgmt NONE >/dev/null 2>&1
+                            fi
+                            wpa_cli -i "$IFACE" enable_network "$ID" >/dev/null 2>&1
+                            wpa_cli -i "$IFACE" select_network "$ID" >/dev/null 2>&1
+                            wpa_cli -i "$IFACE" save_config >/dev/null 2>&1
+                            udhcpc -i "$IFACE" -q -n >/dev/null 2>&1 || sudo udhcpc -i "$IFACE" -q -n >/dev/null 2>&1 || true
+                            exit 0
+                        fi
+                        ;;
+                    rescan)
+                        wpa_cli -i "$IFACE" scan >/dev/null 2>&1 || true
+                        exit 0
+                        ;;
+                esac
+                ;;
+            show)
+                DEV="$3"
+                [ -z "$DEV" ] && DEV="$IFACE"
+                MAC=$(cat "/sys/class/net/$DEV/address" 2>/dev/null || echo "")
+                IP=$(ip -4 addr show dev "$DEV" 2>/dev/null | awk '/inet / {print $2}')
+                GW=$(ip route show dev "$DEV" 2>/dev/null | awk '/default/ {print $3}')
+                DNS=$(awk '/nameserver/ {print $2}' /etc/resolv.conf 2>/dev/null | paste -sd, -)
+                CUR_SSID=$(get_current_ssid)
+                
+                echo "GENERAL.DEVICE:$DEV"
+                echo "GENERAL.CONNECTION:$CUR_SSID"
+                echo "GENERAL.HWADDR:$MAC"
+                echo "IP4.ADDRESS[1]:$IP"
+                echo "IP4.GATEWAY:$GW"
+                echo "IP4.DNS[1]:$DNS"
+                exit 0
+                ;;
+            "")
+                case "$FIELDS" in
+                    *TYPE*STATE*|*STATE*CONNECTION*)
+                        CUR_SSID=$(get_current_ssid)
+                        if is_wifi_blocked; then
+                            echo "wifi:unavailable:"
+                        elif [ -n "$CUR_SSID" ]; then
+                            echo "wifi:connected:$CUR_SSID"
+                        else
+                            echo "wifi:disconnected:"
+                        fi
+                        if [ -d /sys/class/net/usb0 ]; then
+                            echo "ethernet:connected:usb0"
+                        fi
+                        exit 0
+                        ;;
+                    *DEVICE*|*TYPE*)
+                        echo "wlan0:wifi"
+                        [ -d /sys/class/net/usb0 ] && echo "usb0:ethernet"
+                        exit 0
+                        ;;
+                    *)
+                        echo "wlan0:wifi"
+                        exit 0
+                        ;;
+                esac
+                ;;
+        esac
+        ;;
+
+    connection|con)
+        case "$CMD2" in
+            show)
+                if [ "$CMD3" = "id" ]; then
+                    TARGET_ID="$4"
+                    echo "connection.autoconnect:yes"
+                    exit 0
+                fi
+                wpa_cli -i "$IFACE" list_networks 2>/dev/null | tail -n +2 | awk -F'\t' '{print $2}' | grep -v '^$'
+                exit 0
+                ;;
+            up)
+                TARGET_SSID=""
+                if [ "$CMD3" = "id" ]; then
+                    TARGET_SSID="$4"
+                else
+                    TARGET_SSID="$CMD3"
+                fi
+                ID=$(wpa_cli -i "$IFACE" list_networks 2>/dev/null | awk -F'\t' -v s="$TARGET_SSID" '$2 == s {print $1}')
+                if [ -n "$ID" ]; then
+                    wpa_cli -i "$IFACE" select_network "$ID" >/dev/null 2>&1
+                    udhcpc -i "$IFACE" -q -n >/dev/null 2>&1 || sudo udhcpc -i "$IFACE" -q -n >/dev/null 2>&1 || true
+                fi
+                exit 0
+                ;;
+            down)
+                wpa_cli -i "$IFACE" disconnect >/dev/null 2>&1 || true
+                exit 0
+                ;;
+            delete)
+                TARGET_SSID=""
+                if [ "$CMD3" = "id" ]; then
+                    TARGET_SSID="$4"
+                else
+                    TARGET_SSID="$CMD3"
+                fi
+                ID=$(wpa_cli -i "$IFACE" list_networks 2>/dev/null | awk -F'\t' -v s="$TARGET_SSID" '$2 == s {print $1}')
+                if [ -n "$ID" ]; then
+                    wpa_cli -i "$IFACE" remove_network "$ID" >/dev/null 2>&1
+                    wpa_cli -i "$IFACE" save_config >/dev/null 2>&1
+                fi
+                exit 0
+                ;;
+            modify)
+                exit 0
+                ;;
+        esac
+        ;;
+
+    general)
+        case "$FIELDS" in
+            *WIFI*)
+                if is_wifi_blocked; then
+                    echo "disabled"
+                else
+                    echo "enabled"
+                fi
+                exit 0
+                ;;
+        esac
+        ;;
+esac
+
+exit 0

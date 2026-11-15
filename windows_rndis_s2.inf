@@ -1,0 +1,47 @@
+;
+; Remote NDIS for LeEco s2 android_usb (Huawei VID/PID used by patched kernel)
+;
+[Version]
+Signature           = "$Windows NT$"
+Class               = Net
+ClassGUID           = {4d36e972-e325-11ce-bfc1-08002be10318}
+Provider            = %ManufacturerName%
+DriverVer           = 08/02/2026,1.0.0.0
+PnpLockdown         = 1
+CatalogFile         = windows_rndis_s2.cat
+
+[Manufacturer]
+%ManufacturerName%  = RndisDevices,NTamd64
+
+[RndisDevices.NTamd64]
+%RndisDevice%    = RNDIS.NT.6.0, USB\VID_12D1&PID_1039
+%RndisDevice%    = RNDIS.NT.6.0, USB\VID_12D1&PID_1039&MI_00
+%RndisDevice%    = RNDIS.NT.6.0, USB\Class_EF&SubClass_04&Prot_01
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[RNDIS.NT.6.0]
+Characteristics = 0x84
+BusType         = 15
+include         = netrndis.inf
+needs           = usbrndis6.ndi
+AddReg          = Rndis_AddReg
+*IfType            = 6
+*MediaType         = 0
+*PhysicalMediaType = 14
+
+[RNDIS.NT.6.0.Services]
+include = netrndis.inf
+needs   = usbrndis6.ndi.Services
+
+[Rndis_AddReg]
+HKR, NDI\params\NetworkAddress, ParamDesc,  0, "Network Address"
+HKR, NDI\params\NetworkAddress, type,       0, "edit"
+HKR, NDI\params\NetworkAddress, LimitText,  0, "12"
+HKR, NDI\params\NetworkAddress, UpperCase,  0, "1"
+HKR, NDI\params\NetworkAddress, optional,   0, "1"
+
+[Strings]
+ManufacturerName = "postmarketOS s2"
+RndisDevice      = "LeEco s2 Remote NDIS"

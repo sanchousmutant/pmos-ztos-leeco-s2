@@ -1,0 +1,59 @@
+d	bin	
+l	bin/ash	busybox
+l	bin/awk	busybox
+f	bin/busybox	
+l	bin/cat	busybox
+l	bin/chmod	busybox
+l	bin/chown	busybox
+l	bin/cp	busybox
+l	bin/cttyhack	busybox
+l	bin/date	busybox
+l	bin/df	busybox
+l	bin/dmesg	busybox
+l	bin/echo	busybox
+l	bin/free	busybox
+l	bin/grep	busybox
+l	bin/head	busybox
+l	bin/hostname	busybox
+l	bin/ifconfig	busybox
+l	bin/ip	busybox
+l	bin/kill	busybox
+l	bin/ln	busybox
+l	bin/ls	busybox
+l	bin/mdev	busybox
+l	bin/mkdir	busybox
+l	bin/mknod	busybox
+l	bin/mount	busybox
+l	bin/mv	busybox
+l	bin/nc	busybox
+l	bin/poweroff	busybox
+l	bin/ps	busybox
+l	bin/reboot	busybox
+l	bin/rm	busybox
+l	bin/route	busybox
+l	bin/sed	busybox
+l	bin/setsid	busybox
+l	bin/sh	busybox
+l	bin/sleep	busybox
+l	bin/sync	busybox
+l	bin/tail	busybox
+l	bin/telnetd	busybox
+l	bin/touch	busybox
+l	bin/umount	busybox
+l	bin/uname	busybox
+l	bin/vi	busybox
+d	dev	
+d	etc	
+f	init	
+d	mnt	
+d	proc	
+d	root	
+d	sbin	
+l	sbin/init	../bin/busybox
+l	sbin/mdev	../bin/busybox
+l	sbin/telnetd	../bin/busybox
+d	sys	
+d	tmp	
+d	usr	
+d	usr/bin	
+d	usr/sbin	

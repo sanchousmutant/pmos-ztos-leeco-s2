@@ -1,0 +1,143 @@
+#!/sbin/openrc-run
+
+name="wayland"
+description="Wayland compositor (labwc / cage / weston)"
+
+: ${COMPOSITOR:="labwc"}
+: ${CAGE_APP:="/usr/local/bin/zrn-session"}
+: ${WAYLAND_USER:="pmos"}
+: ${WAYLAND_UID:=1000}
+: ${WAYLAND_GID:=1000}
+
+depend() {
+	need seatd
+	after dbus udev-postmount
+}
+
+start() {
+	if [ ! -e /dev/dri/card0 ]; then
+		einfo "No DRM/KMS device found (/dev/dri/card0 missing) - skipping Wayland"
+		eend 0
+		return 0
+	fi
+
+	if [ -e /.no-wayland ]; then
+		einfo "Wayland disabled (/.no-wayland present)"
+		eend 0
+		return 0
+	fi
+
+	# Set CPU governor to schedutil for optimal responsiveness and thermal safety
+	for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+		[ -w "$gov" ] && echo schedutil > "$gov" 2>/dev/null || true
+	done
+
+	ebegin "Starting Wayland ($COMPOSITOR)"
+
+	# Ensure runtime directory exists with correct ownership and permissions
+	mkdir -p /run/user/${WAYLAND_UID}
+	chown ${WAYLAND_UID}:${WAYLAND_GID} /run/user/${WAYLAND_UID}
+	chmod 700 /run/user/${WAYLAND_UID}
+
+	# Ensure log files exist and are writable by the user
+	touch /var/log/wayland.log /var/log/wayland.err
+	chown ${WAYLAND_UID}:${WAYLAND_GID} /var/log/wayland.log /var/log/wayland.err
+
+	USER_HOME=$(eval echo ~${WAYLAND_USER})
+	[ -d "$USER_HOME" ] || USER_HOME="/home/pmos"
+
+	# Ensure user directories exist with correct permissions
+	mkdir -p "$USER_HOME/.config/ztmetro" "$USER_HOME/.cache/ztmetro"
+	chown -R ${WAYLAND_UID}:${WAYLAND_GID} "$USER_HOME/.config" "$USER_HOME/.cache" 2>/dev/null || true
+
+	case "$COMPOSITOR" in
+		ztmetro)
+			start-stop-daemon --start --background --make-pidfile \
+				--pidfile /var/run/wayland.pid \
+				--chdir "$USER_HOME" \
+				--user "$WAYLAND_USER" \
+				--stdout /var/log/wayland.log \
+				--stderr /var/log/wayland.err \
+				--env HOME="$USER_HOME" \
+				--env USER="$WAYLAND_USER" \
+				--env SHELL="/bin/sh" \
+				--env PATH="/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin" \
+				--env XDG_RUNTIME_DIR=/run/user/${WAYLAND_UID} \
+				--env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${WAYLAND_UID}/bus \
+				--env XDG_SESSION_TYPE=wayland \
+				--env XDG_DATA_DIRS="/usr/local/share:/usr/share" \
+				--env XDG_CONFIG_HOME="$USER_HOME/.config" \
+				--env XDG_CACHE_HOME="$USER_HOME/.cache" \
+				--env LIBSEAT_BACKEND=seatd \
+				--env WLR_RENDERER=gles2 \
+				--env WLR_NO_HARDWARE_CURSORS=1 \
+				--env SCALE="${SCALE:-2.0}" \
+				--exec /usr/local/bin/ztmetro
+			;;
+		labwc)
+			start-stop-daemon --start --background --make-pidfile \
+				--pidfile /var/run/wayland.pid \
+				--chdir "$USER_HOME" \
+				--user "$WAYLAND_USER" \
+				--stdout /var/log/wayland.log \
+				--stderr /var/log/wayland.err \
+				--env HOME="$USER_HOME" \
+				--env XDG_RUNTIME_DIR=/run/user/${WAYLAND_UID} \
+				--env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${WAYLAND_UID}/bus \
+				--env XDG_SESSION_TYPE=wayland \
+				--env LIBSEAT_BACKEND=seatd \
+				--env WLR_RENDERER=gles2 \
+				--env WLR_NO_HARDWARE_CURSORS=1 \
+				--env LP_NUM_THREADS=4 \
+				--env SCALE="${SCALE:-2.0}" \
+				--exec /usr/bin/labwc -- -S "$CAGE_APP"
+			;;
+		cage)
+			start-stop-daemon --start --background --make-pidfile \
+				--pidfile /var/run/wayland.pid \
+				--chdir "$USER_HOME" \
+				--user "$WAYLAND_USER" \
+				--stdout /var/log/wayland.log \
+				--stderr /var/log/wayland.err \
+				--env HOME="$USER_HOME" \
+				--env XDG_RUNTIME_DIR=/run/user/${WAYLAND_UID} \
+				--env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${WAYLAND_UID}/bus \
+				--env XDG_SESSION_TYPE=wayland \
+				--env LIBSEAT_BACKEND=seatd \
+				--env WLR_RENDERER=gles2 \
+				--env WLR_NO_HARDWARE_CURSORS=1 \
+				--env LP_NUM_THREADS=4 \
+				--env SCALE="${SCALE:-2.0}" \
+				--exec /usr/bin/cage -- -s -- $CAGE_APP
+			;;
+		weston)
+			start-stop-daemon --start --background --make-pidfile \
+				--pidfile /var/run/wayland.pid \
+				--chdir "$USER_HOME" \
+				--user "$WAYLAND_USER" \
+				--stdout /var/log/wayland.log \
+				--stderr /var/log/wayland.err \
+				--env HOME="$USER_HOME" \
+				--env XDG_RUNTIME_DIR=/run/user/${WAYLAND_UID} \
+				--env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${WAYLAND_UID}/bus \
+				--env XDG_SESSION_TYPE=wayland \
+				--env LIBSEAT_BACKEND=seatd \
+				--exec /usr/bin/weston -- -B drm --drm-device=card0 --renderer=pixman
+			;;
+		*)
+			eerror "Unknown compositor: $COMPOSITOR"
+			eend 1
+			return 1
+			;;
+	esac
+
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping Wayland ($COMPOSITOR)"
+	start-stop-daemon --stop --pidfile /var/run/wayland.pid 2>/dev/null || true
+	killall -9 cage labwc ztmetro zrn-session zrn-launcher squeekboard wvkbd-mobintl chromium foot weston 2>/dev/null || true
+	rm -f /var/run/wayland.pid
+	eend 0
+}

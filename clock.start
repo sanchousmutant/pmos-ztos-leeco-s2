@@ -1,0 +1,54 @@
+#!/bin/sh
+# s2 RTC is dead: hwclock -r returns 1970 and RTC_SET_TIME fails with ENODEV.
+# start-sshd.sh sets a fallback date (2026-11-08) early in boot, so a simple
+# "year >= 2025" check is not enough.  Always resync in the background from
+# NTP, with the HTTP Date header as a TLS-free fallback.  The fallback date is
+# already valid for certificate checks, so badwolf/WebKit work even when the
+# network is not up yet.
+
+log_file=/var/log/clock.log
+
+(
+	exec >>"$log_file" 2>&1
+	echo "--- clock sync $(date -u) ---"
+
+	# 1) NTP (works as soon as wlan0 has an address).
+	i=0
+	while [ $i -lt 10 ]; do
+		i=$((i + 1))
+		if timeout 8 ntpd -q -n -p pool.ntp.org; then
+			echo "set by NTP: $(date -u)"
+			exit 0
+		fi
+		sleep 3
+	done
+
+	# 2) HTTP Date header - no TLS, so it works regardless of the clock.
+	i=0
+	while [ $i -lt 10 ]; do
+		i=$((i + 1))
+		hdr=$(wget -T 5 -S -O /dev/null http://example.com 2>&1 | \
+			awk -F': ' 'tolower($1) ~ /date/ {print $2; exit}')
+		if [ -n "$hdr" ]; then
+			set -- $(echo "$hdr" | tr -d ',')
+			case "$3" in
+				Jan) m=01 ;; Feb) m=02 ;; Mar) m=03 ;; Apr) m=04 ;;
+				May) m=05 ;; Jun) m=06 ;; Jul) m=07 ;; Aug) m=08 ;;
+				Sep) m=09 ;; Oct) m=10 ;; Nov) m=11 ;; Dec) m=12 ;;
+				*) m= ;;
+			esac
+			if [ -n "$m" ]; then
+				if date -u -s "$4-$m-$2 $5"; then
+					echo "set by HTTP Date: $hdr"
+					exit 0
+				fi
+			fi
+		fi
+		sleep 3
+	done
+
+	echo "WARNING: no time source available, keeping $(date -u)"
+	exit 1
+) &
+
+exit 0

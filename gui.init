@@ -1,0 +1,50 @@
+#!/sbin/openrc-run
+
+name="gui"
+description="Start Xorg and Openbox desktop session"
+
+depend() {
+    after dbus fb-setup
+}
+
+start() {
+    # mainline: не даём Xorg забрать DRM/KMS; для Wayland будет отдельный сервис.
+    if [ -e /dev/dri/card0 ]; then
+        einfo "DRM/KMS detected - legacy Xorg GUI skipped"
+        eend 0
+        return 0
+    fi
+
+    # Touch /.no-gui to keep the boot console-only.  Useful while the display
+    # subsystem is being debugged: a hung Xorg floods the kernel log with MDSS
+    # register dumps and overruns the ramoops buffer, destroying the boot log.
+    #
+    # NOTE: returning 0 here makes OpenRC record the service as *started*, so a
+    # later plain `rc-service gui start` answers "gui has already been started"
+    # and does nothing.  After removing the flag you must use:
+    #     rc-service gui restart
+    if [ -e /.no-gui ]; then
+        einfo "GUI disabled (/.no-gui present)"
+        ewarn "service marked started - use 'rc-service gui restart' after removing /.no-gui"
+        eend 0
+        return 0
+    fi
+
+    ebegin "Starting GUI (Xorg + Openbox)"
+    if pidof Xorg >/dev/null 2>&1; then
+        einfo "Xorg already running"
+        eend 0
+        return 0
+    fi
+    start-stop-daemon --start --background --make-pidfile \
+        --pidfile /var/run/gui.pid \
+        --exec /bin/sh -- /usr/local/bin/start-gui.sh
+    eend 0
+}
+
+stop() {
+    ebegin "Stopping GUI"
+    start-stop-daemon --stop --pidfile /var/run/gui.pid 2>/dev/null || true
+    killall openbox Xorg tint2 2>/dev/null || true
+    eend 0
+}

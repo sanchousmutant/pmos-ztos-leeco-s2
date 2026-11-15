@@ -1,0 +1,12 @@
+#!/sbin/openrc-run
+# /etc/init.d/phone-keyd - phone hardware keys shutdown/reboot monitor daemon
+
+name="phone-keyd"
+description="Monitors hardware phone keys for emergency poweroff and reboot"
+command="/usr/local/bin/phone-keyd"
+command_background="yes"
+pidfile="/run/phone-keyd.pid"
+
+depend() {
+	after udev udev-postmount
+}

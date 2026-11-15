@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=ZrnDevTest
+Comment=What the hardware reports
+Exec=zrndevtest
+Terminal=false
+Type=Application
+Icon=utilities-terminal
+Categories=System;Monitor;

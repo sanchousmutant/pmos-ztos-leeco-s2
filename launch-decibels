@@ -1,0 +1,58 @@
+#!/bin/sh
+# launch-decibels: Optimized GNOME Decibels audio player runner for LeEco Le 2 (Wayland, PipeWire)
+
+export XDG_RUNTIME_DIR=/run/user/1000
+export WAYLAND_DISPLAY=wayland-0
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+export PULSE_SERVER="unix:/run/user/1000/pulse/native"
+
+# Ensure session dbus is running
+if [ ! -S /run/user/1000/bus ]; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+    else
+        dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+    fi
+fi
+
+# Ensure PipeWire audio server and PulseAudio bridge are running
+if ! pidof pipewire >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 pipewire &"
+    else
+        pipewire &
+    fi
+    sleep 0.2
+fi
+if ! pidof wireplumber >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 wireplumber &"
+    else
+        wireplumber &
+    fi
+    sleep 0.2
+fi
+if ! pidof pipewire-pulse >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 pipewire-pulse &"
+    else
+        pipewire-pulse &
+    fi
+    sleep 0.2
+fi
+
+# Ensure speaker amplifier power/route GPIOs are enabled
+pgrep -f "gpioset.*132" >/dev/null 2>&1 || gpioset -c 4 -z 132=1 111=1 2>/dev/null || true
+
+# Ensure speaker route is active
+amixer -c 0 cset iface=MIXER,name='QUIN_MI2S_RX Audio Mixer MultiMedia1' 1 >/dev/null 2>&1
+amixer -c 0 cset iface=MIXER,name='Amp Input' 0 >/dev/null 2>&1
+
+# Ensure unmute and full volume
+su - pmos -c "XDG_RUNTIME_DIR=/run/user/1000 wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0 2>/dev/null && XDG_RUNTIME_DIR=/run/user/1000 wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>/dev/null" 2>/dev/null || true
+
+if [ "$(id -u)" -eq 0 ]; then
+    exec doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 DBUS_SESSION_BUS_ADDRESS=\"$DBUS_SESSION_BUS_ADDRESS\" PULSE_SERVER=\"$PULSE_SERVER\" /usr/bin/decibels \"\$@\"" -- "$@"
+else
+    exec /usr/bin/decibels "$@"
+fi

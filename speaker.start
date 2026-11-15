@@ -1,0 +1,30 @@
+#!/bin/sh
+# Select the QDSP6 speaker backend after boot: Quinary MI2S -> external
+# amplifier (TFA9890).
+# GPIO 132 (wsa-spkr-sd / speaker-en) and GPIO 111 (audio_switch_pin) must be HIGH.
+exec >> /var/log/speaker.log 2>&1
+echo "=== speaker.start $(date) ==="
+
+# Enable speaker amplifier power/shutdown pin (GPIO 132) and internal speaker route (GPIO 111)
+if ! pgrep -f "gpioset.*132" >/dev/null 2>&1; then
+    gpioset -c 4 -z 132=1 111=1 2>/dev/null || true
+fi
+
+# Use exactly one frontend for the Quinary MI2S backend.  Enabling both
+# MultiMedia1 and MultiMedia3 at once leaves the second ASM session stale
+# (q6asm_open_write -> ADSP_EALREADY), so PipeWire's default PCM gets stuck.
+amixer -c 0 sset 'QUIN_MI2S_RX Audio Mixer MultiMedia1' on 2>/dev/null
+amixer -c 0 sset 'QUIN_MI2S_RX Audio Mixer MultiMedia3' off 2>/dev/null
+amixer -c 0 sset 'Amp Input' 'Left' 2>/dev/null
+
+# Unmute and set full volume in PipeWire once session is up
+(
+    for i in $(seq 1 15); do
+        if [ -S /run/user/1000/pipewire-0 ]; then
+            su - pmos -c "XDG_RUNTIME_DIR=/run/user/1000 wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0 2>/dev/null && XDG_RUNTIME_DIR=/run/user/1000 wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>/dev/null"
+            break
+        fi
+        sleep 1
+    done
+) &
+

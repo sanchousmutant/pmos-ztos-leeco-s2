@@ -1,0 +1,24 @@
+# /etc/inittab - LeEco Le 2 (s2) postmarketOS / Alpine boot sequence
+#
+# This device has no usable virtual console (Android 3.10 kernel, no readable
+# framebuffer console), so every stage is logged twice:
+#   * /var/log/boot.log  on p56 - persistent, readable from TWRP after a crash
+#   * /dev/kmsg          - the kernel ring buffer, which ramoops keeps in
+#                          /sys/fs/pstore/console-ramoops-0 across a reboot
+#
+# Every stage writes its own exit code into boot.log, so a stalled boot can be
+# pinpointed to the exact stage without a live shell.
+#
+# After a failed boot: reboot into TWRP and read
+#   /data/var/log/boot.log             (userspace view, per-stage exit codes)
+#   /data/.stage2.log                  (PID 1 stage inside the new root)
+#   /sys/fs/pstore/console-ramoops-0   (kernel view, survives a hard hang)
+
+::sysinit:/bin/sh -c 'mkdir -p /var/log; L=/var/log/boot.log; echo "=== start-sshd.sh ===" >>$L; /start-sshd.sh </dev/console >>$L 2>&1; r=$?; echo "=== start-sshd.sh rc=$r ===" >>$L; echo "INITTAB: start-sshd.sh rc=$r" >/dev/kmsg'
+::sysinit:/bin/sh -c 'L=/var/log/boot.log; echo "=== openrc sysinit ===" >>$L; /sbin/openrc sysinit </dev/console >>$L 2>&1; r=$?; echo "=== openrc sysinit rc=$r ===" >>$L; echo "INITTAB: openrc sysinit rc=$r" >/dev/kmsg'
+::sysinit:/bin/sh -c 'L=/var/log/boot.log; echo "=== openrc boot ===" >>$L; /sbin/openrc boot </dev/console >>$L 2>&1; r=$?; echo "=== openrc boot rc=$r ===" >>$L; echo "INITTAB: openrc boot rc=$r" >/dev/kmsg'
+::wait:/bin/sh -c 'L=/var/log/boot.log; echo "=== openrc default ===" >>$L; /sbin/openrc default </dev/console >>$L 2>&1; r=$?; echo "=== openrc default rc=$r ===" >>$L; echo "INITTAB: openrc default rc=$r" >/dev/kmsg'
+
+# no getty: the panel is driven by Xorg, there is no usable VT
+::ctrlaltdel:/sbin/reboot
+::shutdown:/sbin/openrc shutdown

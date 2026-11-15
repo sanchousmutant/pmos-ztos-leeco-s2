@@ -1,0 +1,58 @@
+#!/bin/sh
+# launch-angelfish: Optimized Plasma Mobile Angelfish browser runner for LeEco Le 2 (Adreno 510 GPU, Wayland)
+
+export XDG_RUNTIME_DIR=/run/user/1000
+export WAYLAND_DISPLAY=wayland-0
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+export PULSE_SERVER="unix:/run/user/1000/pulse/native"
+
+export QT_QPA_PLATFORM=wayland
+export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+
+# Chromium flags for QtWebEngine on Freedreno / Adreno 510:
+export QTWEBENGINE_CHROMIUM_FLAGS="--ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy --disable-vulkan --use-gl=angle --use-angle=gles --no-sandbox"
+
+# Ensure session dbus is running
+if [ ! -S /run/user/1000/bus ]; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+    else
+        dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+    fi
+fi
+
+# Ensure PipeWire audio server and PulseAudio bridge are running for web audio
+if ! pidof pipewire >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 pipewire &"
+    else
+        pipewire &
+    fi
+    sleep 0.2
+fi
+if ! pidof wireplumber >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 wireplumber &"
+    else
+        wireplumber &
+    fi
+    sleep 0.2
+fi
+if ! pidof pipewire-pulse >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 pipewire-pulse &"
+    else
+        pipewire-pulse &
+    fi
+    sleep 0.2
+fi
+
+URL="${1:-https://duckduckgo.com}"
+
+ANGELFISH_CMD="angelfish $URL"
+
+if [ "$(id -u)" -eq 0 ]; then
+    exec doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 DBUS_SESSION_BUS_ADDRESS=\"$DBUS_SESSION_BUS_ADDRESS\" PULSE_SERVER=\"$PULSE_SERVER\" QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 QTWEBENGINE_CHROMIUM_FLAGS=\"$QTWEBENGINE_CHROMIUM_FLAGS\" $ANGELFISH_CMD"
+else
+    exec sh -c "$ANGELFISH_CMD"
+fi

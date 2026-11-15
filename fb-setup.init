@@ -1,0 +1,43 @@
+#!/sbin/openrc-run
+
+description="Create /dev/fb0 device node and configure display before GUI starts"
+
+depend() {
+    before gui tinydm
+    after devfs udev udev-trigger localmount
+    need devfs udev-trigger
+}
+
+start() {
+    ebegin "Setting up framebuffer device nodes"
+
+    # Re-trigger udev for graphics subsystem to ensure fb symlinks are created
+    udevadm trigger --subsystem-match=graphics --action=add 2>/dev/null || true
+    udevadm settle --timeout=2 2>/dev/null || true
+
+    # Also manually create node in case udev did not fire
+    mkdir -p /dev/graphics 2>/dev/null
+    if [ ! -e /dev/graphics/fb0 ]; then
+        mknod /dev/graphics/fb0 c 29 0 2>/dev/null || true
+    fi
+    chmod 0666 /dev/graphics/fb0 2>/dev/null || true
+
+    # Create /dev/fb0 symlink that Xorg expects
+    rm -f /dev/fb0 2>/dev/null || true
+    ln -sf /dev/graphics/fb0 /dev/fb0 2>/dev/null || true
+    chmod 0666 /dev/fb0 2>/dev/null || true
+
+    # Remove tty0/tty1 so Xorg does not fail on missing VT in Android kernel
+    rm -f /dev/tty0 /dev/tty1 2>/dev/null || true
+
+    # Turn on panel & backlight & pan to buffer 0
+    echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
+    echo 255 > /sys/class/leds/lcd-backlight/brightness 2>/dev/null || true
+    echo 2048 > /sys/class/leds/wled/brightness 2>/dev/null || true
+    chmod 0666 /sys/class/graphics/fb0/blank 2>/dev/null || true
+    /usr/local/bin/fb_pan0 2>/dev/null || true
+
+    # Log result
+    ls -la /dev/fb0 /dev/graphics/fb0 >> /var/log/fb-setup.log 2>&1
+    eend 0
+}

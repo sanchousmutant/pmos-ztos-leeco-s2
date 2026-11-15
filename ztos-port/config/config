@@ -1,0 +1,7 @@
+# ztMETRO configuration — LeEco Le 2 (s2)
+accent = cobalt
+columns = 3
+haptics = off
+timeout = 60
+lock = on
+menu_speed = 75

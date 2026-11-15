@@ -1,0 +1,378 @@
+diff --git a/arch/arm64/boot/dts/qcom/Makefile b/arch/arm64/boot/dts/qcom/Makefile
+index bdee32d36..63f03a136 100644
+--- a/arch/arm64/boot/dts/qcom/Makefile
++++ b/arch/arm64/boot/dts/qcom/Makefile
+@@ -87,6 +87,7 @@ dtb-$(CONFIG_ARCH_QCOM)	+= msm8953-xiaomi-vince.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8956-sony-xperia-loire-kugo.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8956-sony-xperia-loire-suzu.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8956-xiaomi-kenzo.dtb
++dtb-$(CONFIG_ARCH_QCOM)	+= msm8976-leeco-s2.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8976-longcheer-l9360.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8992-lg-bullhead-rev-10.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8992-lg-bullhead-rev-101.dtb
+diff --git a/arch/arm64/boot/dts/qcom/msm8976.dtsi b/arch/arm64/boot/dts/qcom/msm8976.dtsi
+index df598840a..caaf86cc9 100644
+--- a/arch/arm64/boot/dts/qcom/msm8976.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8976.dtsi
+@@ -14,6 +14,9 @@
+ #include <dt-bindings/interrupt-controller/irq.h>
+ #include <dt-bindings/power/qcom-rpmpd.h>
+ #include <dt-bindings/thermal/thermal.h>
++#include <dt-bindings/sound/qcom,q6afe.h>
++#include <dt-bindings/sound/qcom,q6asm.h>
++#include <dt-bindings/soc/qcom,apr.h>
+ 
+ / {
+ 	interrupt-parent = <&intc>;
+@@ -738,6 +741,7 @@ tlmm: pinctrl@1000000 {
+ 			compatible = "qcom,msm8976-pinctrl";
+ 			reg = <0x01000000 0x300000>;
+ 			interrupts = <GIC_SPI 208 IRQ_TYPE_LEVEL_HIGH>;
++			power-domains = <&rpmpd MSM8976_VDDCX>;
+ 			#gpio-cells = <2>;
+ 			gpio-controller;
+ 			gpio-ranges = <&tlmm 0 0 145>;
+@@ -1694,6 +1698,120 @@ wcnss_wifi: wifi {
+ 			};
+ 		};
+ 
++		lpass: remoteproc@c200000 {
++			compatible = "qcom,msm8976-adsp-pas", "qcom,msm8953-adsp-pil";
++			reg = <0x0c200000 0x100>;
++
++			interrupts-extended = <&intc GIC_SPI 293 IRQ_TYPE_EDGE_RISING>,
++					      <&adsp_smp2p_in 0 IRQ_TYPE_EDGE_RISING>,
++					      <&adsp_smp2p_in 1 IRQ_TYPE_EDGE_RISING>,
++					      <&adsp_smp2p_in 2 IRQ_TYPE_EDGE_RISING>,
++					      <&adsp_smp2p_in 3 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "wdog", "fatal", "ready",
++					  "handover", "stop-ack";
++			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>;
++			clock-names = "xo";
++
++			power-domains = <&rpmpd MSM8976_VDDCX>;
++			power-domain-names = "cx";
++
++			memory-region = <&lpass_mem>;
++
++			qcom,smem-states = <&adsp_smp2p_out 0>;
++			qcom,smem-state-names = "stop";
++
++			status = "disabled";
++
++			smd-edge {
++				interrupts = <GIC_SPI 289 IRQ_TYPE_EDGE_RISING>;
++
++				label = "lpass";
++				mboxes = <&apcs 8>;
++				qcom,smd-edge = <1>;
++				qcom,remote-pid = <2>;
++
++				apr {
++					compatible = "qcom,apr-v2";
++					qcom,smd-channels = "apr_audio_svc";
++					qcom,domain = <APR_DOMAIN_ADSP>;
++					#address-cells = <1>;
++					#size-cells = <0>;
++
++					q6core: service@3 {
++						reg = <APR_SVC_ADSP_CORE>;
++						compatible = "qcom,q6core";
++					};
++
++					q6afe: service@4 {
++						compatible = "qcom,q6afe";
++						reg = <APR_SVC_AFE>;
++						q6afedai: dais {
++							compatible = "qcom,q6afe-dais";
++							#address-cells = <1>;
++							#size-cells = <0>;
++							#sound-dai-cells = <1>;
++
++							dai@16 {
++								reg = <PRIMARY_MI2S_RX>;
++								qcom,sd-lines = <0 1>;
++							};
++							dai@20 {
++								reg = <TERTIARY_MI2S_TX>;
++								qcom,sd-lines = <0 1>;
++							};
++							dai@127 {
++								reg = <QUINARY_MI2S_RX>;
++								qcom,sd-lines = <0>;
++							};
++						};
++
++						q6afecc: clock-controller {
++							compatible = "qcom,q6afe-clocks";
++							#clock-cells = <2>;
++						};
++					};
++
++					q6asm: service@7 {
++						compatible = "qcom,q6asm";
++						reg = <APR_SVC_ASM>;
++						q6asmdai: dais {
++							compatible = "qcom,q6asm-dais";
++							#address-cells = <1>;
++							#size-cells = <0>;
++							#sound-dai-cells = <1>;
++
++							dai@0 {
++								reg = <MSM_FRONTEND_DAI_MULTIMEDIA1>;
++								direction = <Q6ASM_DAI_RX>;
++							};
++							dai@1 {
++								reg = <MSM_FRONTEND_DAI_MULTIMEDIA2>;
++								direction = <Q6ASM_DAI_TX>;
++							};
++							dai@2 {
++								reg = <MSM_FRONTEND_DAI_MULTIMEDIA3>;
++								direction = <Q6ASM_DAI_RX>;
++							};
++							dai@3 {
++								reg = <MSM_FRONTEND_DAI_MULTIMEDIA4>;
++								direction = <Q6ASM_DAI_RX>;
++								is-compress-dai;
++							};
++						};
++					};
++
++					q6adm: service@8 {
++						compatible = "qcom,q6adm";
++						reg = <APR_SVC_ADM>;
++						q6routing: routing {
++							compatible = "qcom,q6adm-routing";
++							#sound-dai-cells = <0>;
++						};
++					};
++				};
++			};
++		};
++
+ 		intc: interrupt-controller@b000000 {
+ 			compatible = "qcom,msm-qgic2";
+ 			reg = <0x0b000000 0x1000>, <0x0b002000 0x1000>;
+diff --git a/drivers/gpu/drm/panel/msm8956-generated/Kconfig b/drivers/gpu/drm/panel/msm8956-generated/Kconfig
+index c3536cd65..f1efb8500 100644
+--- a/drivers/gpu/drm/panel/msm8956-generated/Kconfig
++++ b/drivers/gpu/drm/panel/msm8956-generated/Kconfig
+@@ -25,6 +25,10 @@ config DRM_PANEL_LONGCHEER_L9360_R63350
+ 	tristate "Longcheer L9360 R63350"
+ 	default DRM_PANEL_MSM8956_GENERATED
+ 
++config DRM_PANEL_LEECO_S2_BOE_NT35596S
++	tristate "LeEco Le 2 BOE NT35596S"
++	default DRM_PANEL_MSM8956_GENERATED
++
+ config DRM_PANEL_XIAOMI_KENZO_NT35532_BOE
+ 	tristate "Xiaomi KENZO NT35532 BOE"
+ 	default DRM_PANEL_MSM8956_GENERATED
+diff --git a/drivers/gpu/drm/panel/msm8956-generated/Makefile b/drivers/gpu/drm/panel/msm8956-generated/Makefile
+index f4d12af2d..8596e251d 100644
+--- a/drivers/gpu/drm/panel/msm8956-generated/Makefile
++++ b/drivers/gpu/drm/panel/msm8956-generated/Makefile
+@@ -3,6 +3,7 @@ obj-$(CONFIG_DRM_PANEL_LONGCHEER_L9360_HX8399C) += panel-longcheer-l9360-hx8399c
+ obj-$(CONFIG_DRM_PANEL_LONGCHEER_L9360_NT35695) += panel-longcheer-l9360-nt35695.o
+ obj-$(CONFIG_DRM_PANEL_LONGCHEER_L9360_OTM1906A) += panel-longcheer-l9360-otm1906a.o
+ obj-$(CONFIG_DRM_PANEL_LONGCHEER_L9360_R63350) += panel-longcheer-l9360-r63350.o
++obj-$(CONFIG_DRM_PANEL_LEECO_S2_BOE_NT35596S) += panel-leeco-s2-boe-nt35596s.o
+ obj-$(CONFIG_DRM_PANEL_XIAOMI_KENZO_NT35532_BOE) += panel-xiaomi-kenzo-nt35532-boe.o
+ obj-$(CONFIG_DRM_PANEL_XIAOMI_KENZO_NT35596_TIANMA) += panel-xiaomi-kenzo-nt35596-tianma.o
+ obj-$(CONFIG_DRM_PANEL_XIAOMI_KENZO_R63315_SHARP) += panel-xiaomi-kenzo-r63315-sharp.o
+diff --git a/drivers/mmc/host/sdhci-msm.c b/drivers/mmc/host/sdhci-msm.c
+index 3b8523313..135f91430 100644
+--- a/drivers/mmc/host/sdhci-msm.c
++++ b/drivers/mmc/host/sdhci-msm.c
+@@ -2490,7 +2490,8 @@ static inline void sdhci_msm_get_of_property(struct platform_device *pdev,
+ 
+ 	of_property_read_u32(node, "qcom,dll-config", &msm_host->dll_config);
+ 
+-	if (of_device_is_compatible(node, "qcom,msm8916-sdhci"))
++	if (of_device_is_compatible(node, "qcom,msm8916-sdhci") ||
++	    of_device_is_compatible(node, "qcom,msm8976-sdhci"))
+ 		host->quirks2 |= SDHCI_QUIRK2_BROKEN_64_BIT_DMA;
+ }
+ 
+diff --git a/drivers/pinctrl/qcom/pinctrl-msm.c b/drivers/pinctrl/qcom/pinctrl-msm.c
+index e99871b90..63fcef6b9 100644
+--- a/drivers/pinctrl/qcom/pinctrl-msm.c
++++ b/drivers/pinctrl/qcom/pinctrl-msm.c
+@@ -1541,6 +1541,8 @@ int msm_pinctrl_probe(struct platform_device *pdev,
+ 	pctrl->dev = &pdev->dev;
+ 	pctrl->soc = soc_data;
+ 	pctrl->chip = msm_gpio_template;
++	if (soc_data->no_get_direction)
++		pctrl->chip.get_direction = NULL;
+ 	pctrl->intr_target_use_scm = of_device_is_compatible(
+ 					pctrl->dev->of_node,
+ 					"qcom,ipq8064-pinctrl");
+diff --git a/drivers/pinctrl/qcom/pinctrl-msm.h b/drivers/pinctrl/qcom/pinctrl-msm.h
+index 4625fa532..1c5834f55 100644
+--- a/drivers/pinctrl/qcom/pinctrl-msm.h
++++ b/drivers/pinctrl/qcom/pinctrl-msm.h
+@@ -162,6 +162,7 @@ struct msm_pinctrl_soc_data {
+ 	unsigned ngroups;
+ 	unsigned ngpios;
+ 	bool pull_no_keeper;
++	bool no_get_direction;
+ 	const char *const *tiles;
+ 	unsigned int ntiles;
+ 	const int *reserved_gpios;
+diff --git a/drivers/pinctrl/qcom/pinctrl-msm8976.c b/drivers/pinctrl/qcom/pinctrl-msm8976.c
+index 345539b9e..d91388f42 100644
+--- a/drivers/pinctrl/qcom/pinctrl-msm8976.c
++++ b/drivers/pinctrl/qcom/pinctrl-msm8976.c
+@@ -1078,6 +1078,7 @@ static const struct msm_pinctrl_soc_data msm8976_pinctrl = {
+ 	.groups = msm8976_groups,
+ 	.ngroups = ARRAY_SIZE(msm8976_groups),
+ 	.ngpios = 145,
++	.no_get_direction = true,
+ };
+ 
+ static int msm8976_pinctrl_probe(struct platform_device *pdev)
+diff --git a/drivers/remoteproc/qcom_q6v5_pas.c b/drivers/remoteproc/qcom_q6v5_pas.c
+index 158bcd6cc..49b765e7e 100644
+--- a/drivers/remoteproc/qcom_q6v5_pas.c
++++ b/drivers/remoteproc/qcom_q6v5_pas.c
+@@ -1461,6 +1461,8 @@ static const struct of_device_id qcom_pas_of_match[] = {
+ 	{ .compatible = "qcom,milos-wpss-pas", .data = &sc7280_wpss_resource},
+ 	{ .compatible = "qcom,msm8226-adsp-pil", .data = &msm8996_adsp_resource},
+ 	{ .compatible = "qcom,msm8953-adsp-pil", .data = &msm8996_adsp_resource},
++	{ .compatible = "qcom,msm8976-adsp-pas", .data = &msm8996_adsp_resource},
++	{ .compatible = "qcom,msm8976-adsp-pil", .data = &msm8996_adsp_resource},
+ 	{ .compatible = "qcom,msm8974-adsp-pil", .data = &adsp_resource_init},
+ 	{ .compatible = "qcom,msm8996-adsp-pil", .data = &msm8996_adsp_resource},
+ 	{ .compatible = "qcom,msm8996-slpi-pil", .data = &msm8996_slpi_resource_init},
+diff --git a/sound/soc/qcom/apq8016_sbc.c b/sound/soc/qcom/apq8016_sbc.c
+index 3023cf180..943689ec7 100644
+--- a/sound/soc/qcom/apq8016_sbc.c
++++ b/sound/soc/qcom/apq8016_sbc.c
+@@ -10,6 +10,7 @@
+ #include <linux/of.h>
+ #include <linux/clk.h>
+ #include <linux/platform_device.h>
++#include <linux/pinctrl/consumer.h>
+ #include <sound/pcm.h>
+ #include <sound/pcm_params.h>
+ #include <sound/jack.h>
+@@ -20,12 +21,13 @@
+ #include "common.h"
+ #include "qdsp6/q6afe.h"
+ 
+-#define MI2S_COUNT  (MI2S_QUATERNARY + 1)
++#define MI2S_COUNT  (MI2S_QUINARY + 1)
+ 
+ struct apq8016_sbc_data {
+ 	struct snd_soc_card card;
+ 	void __iomem *mic_iomux;
+ 	void __iomem *spkr_iomux;
++	void __iomem *quin_iomux;
+ 	struct snd_soc_jack jack;
+ 	bool jack_setup;
+ 	int mi2s_clk_count[MI2S_COUNT];
+@@ -90,7 +92,10 @@ static int apq8016_dai_init(struct snd_soc_pcm_runtime *rtd, int mi2s)
+ 		writel(readl(pdata->mic_iomux) | MIC_CTRL_TER_WS_SLAVE_SEL |
+ 			MIC_CTRL_TLMM_SCLK_EN,
+ 			pdata->mic_iomux);
++		break;
+ 
++	case MI2S_QUINARY:
++		writel(readl(pdata->quin_iomux) | BIT(0), pdata->quin_iomux);
+ 		break;
+ 
+ 	default:
+@@ -177,6 +182,9 @@ static int qdsp6_dai_get_lpass_id(struct snd_soc_dai *cpu_dai)
+ 	case QUATERNARY_MI2S_RX:
+ 	case QUATERNARY_MI2S_TX:
+ 		return MI2S_QUATERNARY;
++	case QUINARY_MI2S_RX:
++	case QUINARY_MI2S_TX:
++		return MI2S_QUINARY;
+ 	default:
+ 		return -EINVAL;
+ 	}
+@@ -320,6 +328,14 @@ static int apq8016_sbc_platform_probe(struct platform_device *pdev)
+ 	if (IS_ERR(data->spkr_iomux))
+ 		return PTR_ERR(data->spkr_iomux);
+ 
++	data->quin_iomux = devm_platform_ioremap_resource_byname(pdev, "quin-iomux");
++	if (IS_ERR(data->quin_iomux))
++		return PTR_ERR(data->quin_iomux);
++
++	ret = PTR_ERR_OR_ZERO(devm_pinctrl_get_select_default(dev));
++	if (ret)
++		return ret;
++
+ 	snd_soc_card_set_drvdata(card, data);
+ 
+ 	add_ops(card);
+diff --git a/sound/soc/qcom/common.c b/sound/soc/qcom/common.c
+index 7ee60a58a..4e7cf1c3f 100644
+--- a/sound/soc/qcom/common.c
++++ b/sound/soc/qcom/common.c
+@@ -147,10 +147,17 @@ int qcom_snd_parse_of(struct snd_soc_card *card)
+ 				link->ignore_pmdown_time = 1;
+ 			}
+ 		} else {
+-			/* DPCM frontend */
+ 			link->codecs	 = &snd_soc_dummy_dlc;
+ 			link->num_codecs = 1;
+-			link->dynamic = 1;
++
++			if (platform) {
++				/* DPCM backend with dummy codec */
++				link->no_pcm = 1;
++				link->ignore_pmdown_time = 1;
++			} else {
++				/* DPCM frontend */
++				link->dynamic = 1;
++			}
+ 		}
+ 
+ 		if (platform || !codec) {
+diff --git a/sound/soc/qcom/qdsp6/q6asm-dai.c b/sound/soc/qcom/qdsp6/q6asm-dai.c
+index 0eae8c6e4..924449e08 100644
+--- a/sound/soc/qcom/qdsp6/q6asm-dai.c
++++ b/sound/soc/qcom/qdsp6/q6asm-dai.c
+@@ -110,8 +110,7 @@ static const struct snd_pcm_hardware q6asm_dai_hardware_playback = {
+ 				SNDRV_PCM_INFO_MMAP_VALID |
+ 				SNDRV_PCM_INFO_INTERLEAVED |
+ 				SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME),
+-	.formats =              (SNDRV_PCM_FMTBIT_S16_LE |
+-				SNDRV_PCM_FMTBIT_S24_LE),
++	.formats =              SNDRV_PCM_FMTBIT_S16_LE,
+ 	.rates =                SNDRV_PCM_RATE_8000_192000,
+ 	.rate_min =             8000,
+ 	.rate_max =             192000,
+@@ -136,8 +135,7 @@ static const struct snd_pcm_hardware q6asm_dai_hardware_playback = {
+ 				  SNDRV_PCM_RATE_96000 |		\
+ 				  SNDRV_PCM_RATE_176400 |		\
+ 				  SNDRV_PCM_RATE_192000),		\
+-			.formats = (SNDRV_PCM_FMTBIT_S16_LE |		\
+-					SNDRV_PCM_FMTBIT_S24_LE),	\
++			.formats = SNDRV_PCM_FMTBIT_S16_LE,		\
+ 			.channels_min = 1,				\
+ 			.channels_max = 8,				\
+ 			.rate_min =     8000,				\
+@@ -233,7 +231,7 @@ static int q6asm_dai_prepare(struct snd_soc_component *component,
+ 	prtd->pcm_count = snd_pcm_lib_period_bytes(substream);
+ 	prtd->pcm_irq_pos = 0;
+ 	/* rate and channels are sent to audio driver */
+-	if (prtd->state == Q6ASM_STREAM_RUNNING) {
++	if (prtd->state != Q6ASM_STREAM_IDLE) {
+ 		/* clear the previous setup if any  */
+ 		q6asm_cmd(prtd->audio_client, prtd->stream_id, CMD_CLOSE);
+ 		q6asm_unmap_memory_regions(substream->stream,
+@@ -303,10 +301,9 @@ static int q6asm_dai_prepare(struct snd_soc_component *component,
+ 
+ routing_err:
+ 	q6asm_cmd(prtd->audio_client, prtd->stream_id,  CMD_CLOSE);
++	prtd->state = Q6ASM_STREAM_STOPPED;
+ open_err:
+ 	q6asm_unmap_memory_regions(substream->stream, prtd->audio_client);
+-	q6asm_audio_client_free(prtd->audio_client);
+-	prtd->audio_client = NULL;
+ 
+ 	return ret;
+ }

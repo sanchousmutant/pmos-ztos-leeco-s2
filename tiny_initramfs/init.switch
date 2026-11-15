@@ -1,0 +1,228 @@
+#!/bin/busybox sh
+# Minimal init for LeEco s2 bringup: keep RNDIS, expose telnet/nc shell,
+# then switch_root into the p56 postmarketOS rootfs (OpenRC).
+
+BB=/bin/busybox
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export HOME=/root
+export TERM=linux
+export PS1='s2# '
+
+$BB mount -t proc proc /proc
+$BB mount -t sysfs sysfs /sys
+$BB mount -t tmpfs tmpfs /tmp
+$BB mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+
+[ -e /dev/console ] || $BB mknod -m 620 /dev/console c 5 1
+[ -e /dev/null ] || $BB mknod -m 666 /dev/null c 1 3
+[ -e /dev/tty ] || $BB mknod -m 666 /dev/tty c 5 0
+[ -e /dev/kmsg ] || $BB mknod -m 600 /dev/kmsg c 1 11
+
+# persist a bootstrap log to p56 so we can read it from TWRP/rootfs even
+# if the boot hangs before switch_root (tmpfs and kmsg are lost on reboot)
+$BB mkdir -p /mnt/data 2>/dev/null
+$BB mount -t ext4 -o rw /dev/mmcblk0p56 /mnt/data 2>/dev/null \
+	|| $BB mount -t auto -o rw /dev/mmcblk0p56 /mnt/data 2>/dev/null \
+	|| LOGROOT="(p56 not mounted early)"
+
+log() {
+	echo "tiny-init: $*" > /dev/kmsg 2>/dev/null
+	echo "tiny-init: $*" >> /tmp/tiny-init.log 2>/dev/null
+	echo "tiny-init: $*" >> /mnt/data/tiny-init.log 2>/dev/null
+	$BB sync 2>/dev/null
+}
+
+log "start $($BB uname -a 2>/dev/null) ${LOGROOT}"
+
+# Dump android_usb / f_rndis sysfs once for pstore diagnosis
+AUD=/sys/class/android_usb/android0
+if [ -d "$AUD" ]; then
+	log "android_usb ls: $($BB ls $AUD 2>/dev/null | $BB tr '\n' ' ')"
+	if [ -d "$AUD/f_rndis" ]; then
+		log "f_rndis ls: $($BB ls $AUD/f_rndis 2>/dev/null | $BB tr '\n' ' ')"
+	fi
+fi
+
+setup_usb_rndis() {
+	AUD=/sys/class/android_usb/android0
+	if [ ! -d "$AUD" ]; then
+		log "no android_usb sysfs"
+		return 1
+	fi
+	log "android_usb before: state=$(cat $AUD/state 2>/dev/null) func=$(cat $AUD/functions 2>/dev/null) vid=$(cat $AUD/idVendor 2>/dev/null) pid=$(cat $AUD/idProduct 2>/dev/null)"
+
+	# If kernel already has working RNDIS CONFIGURED with Huawei IDs, do not
+	# bounce the gadget (Windows hates mid-probe resets). Only adjust wceis.
+	st=$(cat "$AUD/state" 2>/dev/null)
+	fn=$(cat "$AUD/functions" 2>/dev/null)
+	vid=$(cat "$AUD/idVendor" 2>/dev/null)
+	pid=$(cat "$AUD/idProduct" 2>/dev/null)
+
+	need_rebind=0
+	case "$fn" in
+		*rndis*) ;;
+		*) need_rebind=1 ;;
+	esac
+	[ "$vid" = "12d1" ] || [ "$vid" = "12D1" ] || need_rebind=1
+	[ "$pid" = "1039" ] || need_rebind=1
+
+	if [ -f "$AUD/f_rndis/wceis" ]; then
+		cur=$(cat "$AUD/f_rndis/wceis" 2>/dev/null)
+		if [ "$cur" != "0" ]; then
+			need_rebind=1
+			log "will set wceis=0 (was '$cur')"
+		else
+			log "wceis already 0"
+		fi
+	else
+		log "no f_rndis/wceis sysfs"
+	fi
+
+	if [ -f "$AUD/f_rndis/ethaddr" ]; then
+		echo '42:16:d0:00:00:01' > "$AUD/f_rndis/ethaddr" 2>/dev/null || true
+		log "ethaddr=$(cat $AUD/f_rndis/ethaddr 2>/dev/null)"
+	fi
+
+	if [ "$need_rebind" = "1" ] || [ "$st" != "CONFIGURED" ]; then
+		log "rebind rndis/wceis"
+		echo 0 > "$AUD/enable" 2>/dev/null || true
+		$BB sleep 1
+		[ -f "$AUD/f_rndis/wceis" ] && echo 0 > "$AUD/f_rndis/wceis" 2>/dev/null
+		echo 12D1 > "$AUD/idVendor" 2>/dev/null || true
+		echo 1039 > "$AUD/idProduct" 2>/dev/null || true
+		echo rndis > "$AUD/functions" 2>/dev/null || echo rndis,adb > "$AUD/functions" 2>/dev/null || true
+		echo 1 > "$AUD/enable" 2>/dev/null || true
+		$BB sleep 2
+	else
+		log "keep existing CONFIGURED rndis gadget"
+	fi
+
+	log "android_usb after: state=$(cat $AUD/state 2>/dev/null) func=$(cat $AUD/functions 2>/dev/null) vid=$(cat $AUD/idVendor 2>/dev/null) pid=$(cat $AUD/idProduct 2>/dev/null) wceis=$(cat $AUD/f_rndis/wceis 2>/dev/null)"
+}
+
+setup_usb_rndis
+
+setup_net() {
+	i=0
+	while [ $i -lt 40 ]; do
+		for iface in rndis0 usb0 eth0; do
+			if [ -d "/sys/class/net/$iface" ]; then
+				log "found $iface -> 172.16.42.1/24"
+				$BB ifconfig $iface 172.16.42.1 netmask 255.255.255.0 up
+				return 0
+			fi
+		done
+		i=$((i + 1))
+		$BB sleep 1
+	done
+	log "no usb net iface found"
+	$BB ls /sys/class/net >> /tmp/tiny-init.log 2>/dev/null
+	return 1
+}
+
+setup_net
+
+start_shells() {
+	if ! $BB pidof telnetd >/dev/null 2>&1; then
+		$BB telnetd -l /bin/sh -p 23
+		log "telnetd :23 pid=$($BB pidof telnetd)"
+	fi
+	if ! $BB pidof nc >/dev/null 2>&1; then
+		($BB nc -ll -p 2323 -e /bin/sh) >/tmp/nc.log 2>&1 &
+		log "nc :2323 pid=$($BB pidof nc)"
+	fi
+}
+
+start_shells
+
+# ---- switch_root into p56 rootfs (OpenRC) ----
+ROOTDEV=/dev/mmcblk0p56
+NEWROOT=/newroot
+
+log "mounting $ROOTDEV to $NEWROOT"
+$BB mkdir -p $NEWROOT
+$BB mount -t ext4 $ROOTDEV $NEWROOT 2>/tmp/mount-root.log
+if [ $? -ne 0 ]; then
+	log "FAILED to mount rootfs, staying in tiny-init"
+	$BB cat /tmp/mount-root.log >> /tmp/tiny-init.log 2>/dev/null
+	while true; do
+		for iface in rndis0 usb0; do
+			if [ -d "/sys/class/net/$iface" ]; then
+				$BB ifconfig $iface 172.16.42.1 netmask 255.255.255.0 up 2>/dev/null || true
+			fi
+		done
+		start_shells
+		$BB sleep 5
+	done
+fi
+
+if [ ! -x "$NEWROOT/sbin/init" ]; then
+	log "FAILED: no /sbin/init in rootfs, staying in tiny-init"
+	while true; do
+		$BB sleep 60
+	done
+fi
+
+log "rootfs has /sbin/init, preparing switch_root"
+log "rootfs uname hint: $($BB cat $NEWROOT/etc/os-release 2>/dev/null | $BB grep -E 'PRETTY|VERSION' | $BB tr '\n' ' ')"
+
+# ---- persistent switch log INSIDE the new root ----
+# After switch_root this lands at /tiny-init-switch.log (readable from TWRP
+# as /data/tiny-init-switch.log). sync after every write survives a panic.
+LOGFILE="$NEWROOT/tiny-init-switch.log"
+echo "=== init.switch log started ===" > "$LOGFILE" 2>/dev/null || log "WARN: cannot create $LOGFILE"
+$BB sync 2>/dev/null
+
+# Make sure newroot is rw (rootfs shipped read-only) so the log can be written
+$BB mount -o remount,rw $NEWROOT 2>/tmp/remount-root.log || log "WARN: remount rw: $($BB cat /tmp/remount-root.log 2>/dev/null)"
+
+# Unmount the bootstrap duplicate of p56 (/mnt/data) so switch_root sees
+# only ONE mount of the block device; two mounts of same fs can break
+# mount(".", "/", MS_MOVE). Log is now on /newroot so /mnt/data not needed.
+$BB umount /mnt/data 2>/dev/null || log "WARN: umount /mnt/data failed (may be OK if not mounted)"
+
+slog() {
+	# switch-stage logger: file on p56 (persists) + kmsg if still reachable
+	echo "[slog] $*" >> "$LOGFILE" 2>/dev/null
+	$BB sync 2>/dev/null
+	if [ -c /dev/kmsg ]; then
+		echo "INIT-S: $*" > /dev/kmsg 2>/dev/null
+	elif [ -c "$NEWROOT/dev/kmsg" ]; then
+		echo "INIT-S: $*" > "$NEWROOT/dev/kmsg" 2>/dev/null
+	fi
+}
+
+slog "os-release read, /sbin/init found"
+
+# Create mountpoints in rootfs if absent
+for d in sys proc dev tmp; do
+	$BB mkdir -p "$NEWROOT/$d" 2>/dev/null && slog "mkdir $d ok" || slog "WARN: mkdir $d failed"
+done
+
+slog "Moving /sys..."
+$BB mount --move /sys "$NEWROOT/sys" >> "$LOGFILE" 2>&1 || slog "WARN: /sys move failed"
+
+slog "Moving /proc..."
+$BB mount --move /proc "$NEWROOT/proc" >> "$LOGFILE" 2>&1 || slog "WARN: /proc move failed"
+
+slog "Moving /dev..."
+$BB mount --move /dev "$NEWROOT/dev" >> "$LOGFILE" 2>&1 || slog "WARN: /dev move failed"
+
+slog "Moving /tmp..."
+$BB mount --move /tmp "$NEWROOT/tmp" >> "$LOGFILE" 2>&1 || slog "WARN: /tmp move failed"
+
+slog "All mounts moved. Executing switch_root NOW!"
+
+# Force-flush everything to p56 before the leap
+$BB sync
+$BB sleep 1
+
+# The leap. Redirect new init's stdout/stderr into our log too.
+# NOTE: no `env -i` — this busybox build has NO `env` applet; calling it
+# makes PID1 exec fail with 127 (command not found) → kernel panics.
+# PATH/TERM/HOME are already exported at the top of the script.
+exec $BB switch_root $NEWROOT /sbin/init >> "$LOGFILE" 2>&1
+
+# -- execution must NEVER reach here --
+slog "CRITICAL FATAL ERROR: switch_root returned!"
+exec $BB sh

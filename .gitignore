@@ -1,0 +1,69 @@
+# Secrets and local tooling
+id_rsa
+id_rsa.*
+*.pem
+*.key
+.env
+.claude/
+
+# Upstream checkouts: clone these separately (versions are pinned in README)
+/ztOS/
+/zrn-sdk/
+
+# Kernel, boot images and other build outputs
+/Image
+/Image.gz
+/Image.gz-dtb
+/Image.patched
+/Image.mainline.gz
+/vmlinuz
+/*.dtb
+/*.ko
+/*.img
+/initramfs-tiny
+/initramfs-tiny.cpio
+/initramfs-tiny.switch
+/initramfs-tiny.switch.cpio
+/twrp_adbd
+/phone-keyd
+/a530_pm4.fw
+/a530_pfp.fw
+
+# Generated DTS dumps and temporary kernel source copies
+/*.dts
+/mdss_*.c
+/qpnp-*.c
+/msm_iommu-v1.c
+
+# Initramfs payloads; keep the scripts, manifests and the few needed binaries
+/tiny_initramfs/bin/*
+!/tiny_initramfs/bin/busybox
+/tiny_initramfs/sbin/*
+/tiny_initramfs_switch/bin/*
+!/tiny_initramfs_switch/bin/busybox
+/tiny_initramfs_switch/sbin/*
+!/tiny_initramfs_switch/sbin/adbd
+
+# Debug audio, plots and captures
+/*.wav
+/*.png
+/*.jpg
+/test_sound.txt
+/*.log
+/wayland.err
+
+# Temporary and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+__pycache__/
+*.pyc
+*.tmp
+*.bak
+*.orig
+*.rej
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

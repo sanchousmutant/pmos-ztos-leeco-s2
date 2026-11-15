@@ -1,0 +1,81 @@
+#!/sbin/openrc-run
+# adbd-guard - stop a spinning adbd when the USB gadget has no ADB function.
+#
+# WHY THIS EXISTS
+#
+# adbd is started by the INITRAMFS (its stdout/stderr point at /.stage2.log and
+# its parent is pid 1), not by any OpenRC service - `rc-service adbd status`
+# answers "service `adbd' does not exist".
+#
+# When the composite gadget comes up as plain `rndis` (no `ffs`), adbd has no
+# FunctionFS endpoint to talk to.  Instead of blocking it falls into a poll
+# loop, and the cost is not subtle.  Measured on this device:
+#
+#     utime+stime = 47101 jiffies  over an uptime of 490 s   (HZ=100)
+#     => 471 s of CPU in 490 s of wall clock, i.e. ~96% of a whole core,
+#        continuously, for nothing.
+#
+# Total CPU went from "82% idle / 7% usr / 9% sys" to "99% idle" the moment it
+# was stopped.
+#
+# WHY IT IS SAFE TO STOP IT
+#
+# ADB is already non-functional in that state: the gadget enumerates with a
+# dead ADB interface and `adb devices` stays empty for the whole boot (RNDIS
+# keeps working, which is why the usb_broken fallback never fires - it only
+# looks at android0/state, and that reads CONFIGURED as soon as RNDIS is up).
+#
+# And /usr/local/bin/usb-adb-rearm.sh does `killall adbd` followed by
+# `/sbin/adbd &` itself, so it neither needs nor misses a pre-existing adbd.
+#
+# THE CONDITION
+#
+# Only stop adbd when the gadget genuinely lacks an ffs function.  If the
+# composite gadget is up as `rndis,ffs` adbd has real work to do and is left
+# alone.  This runs once at boot; it does not fight a later manual re-arm.
+
+AUD=/sys/class/android_usb/android0
+[ -d "$AUD" ] || AUD=/sys/devices/virtual/android_usb/android0
+
+description="Stop adbd if the USB gadget has no ADB (ffs) function"
+
+depend() {
+	after bootmisc
+	before display-manager
+}
+
+start() {
+	if [ ! -d "$AUD" ]; then
+		ebegin "adbd-guard: no android_usb gadget, nothing to do"
+		eend 0
+		return 0
+	fi
+
+	_funcs=$(cat "$AUD/functions" 2>/dev/null)
+
+	case "$_funcs" in
+		*ffs*)
+			ebegin "adbd-guard: gadget has ffs (${_funcs}) - leaving adbd alone"
+			eend 0
+			;;
+		*)
+			ebegin "adbd-guard: gadget has no ffs (${_funcs:-none}) - stopping spinning adbd"
+			if pidof adbd >/dev/null 2>&1; then
+				_pid=$(pidof adbd)
+				kill -TERM $_pid 2>/dev/null
+				# give it a moment, then be firm
+				_i=0
+				while [ "$_i" -lt 10 ] && pidof adbd >/dev/null 2>&1; do
+					sleep 1
+					_i=$((_i + 1))
+				done
+				if pidof adbd >/dev/null 2>&1; then
+					kill -KILL $(pidof adbd) 2>/dev/null
+				fi
+				ewend 0 "stopped adbd (was pid ${_pid})"
+			else
+				ewend 0 "adbd not running"
+			fi
+			;;
+	esac
+}

@@ -1,0 +1,15 @@
+#!/bin/sh
+# zrn-session: launcher for zrn apps under Wayland kiosk (cage)
+# Hardware 3D accelerated under Adreno 510 freedreno GLES2
+
+# Set display scale on DSI-1 (default: 2.0 for 1080x1920 5.5" screen -> 540x960 logical)
+SCALE="${SCALE:-2.0}"
+wlr-randr --output DSI-1 --scale "$SCALE" >/dev/null 2>&1 || true
+
+APP="${1:-/home/pmos/zrn-sdk/examples/launcher/zrn-launcher}"
+
+# Kiosk loop: if app closes (e.g. Back pressed on root page), relaunch it
+while true; do
+	"$APP"
+	sleep 0.5
+done

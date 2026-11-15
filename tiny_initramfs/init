@@ -1,0 +1,143 @@
+#!/bin/busybox sh
+# Minimal init for LeEco s2 bringup: keep RNDIS, expose telnet/nc shell.
+
+BB=/bin/busybox
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export HOME=/root
+export TERM=linux
+export PS1='s2# '
+
+$BB mount -t proc proc /proc
+$BB mount -t sysfs sysfs /sys
+$BB mount -t tmpfs tmpfs /tmp
+$BB mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+
+[ -e /dev/console ] || $BB mknod -m 620 /dev/console c 5 1
+[ -e /dev/null ] || $BB mknod -m 666 /dev/null c 1 3
+[ -e /dev/tty ] || $BB mknod -m 666 /dev/tty c 5 0
+[ -e /dev/kmsg ] || $BB mknod -m 600 /dev/kmsg c 1 11
+
+log() {
+	echo "tiny-init: $*" > /dev/kmsg 2>/dev/null
+	echo "tiny-init: $*" >> /tmp/tiny-init.log
+}
+
+log "start $($BB uname -a 2>/dev/null)"
+
+# Dump android_usb / f_rndis sysfs once for pstore diagnosis
+AUD=/sys/class/android_usb/android0
+if [ -d "$AUD" ]; then
+	log "android_usb ls: $($BB ls $AUD 2>/dev/null | $BB tr '\n' ' ')"
+	if [ -d "$AUD/f_rndis" ]; then
+		log "f_rndis ls: $($BB ls $AUD/f_rndis 2>/dev/null | $BB tr '\n' ' ')"
+	fi
+fi
+
+setup_usb_rndis() {
+	AUD=/sys/class/android_usb/android0
+	if [ ! -d "$AUD" ]; then
+		log "no android_usb sysfs"
+		return 1
+	fi
+	log "android_usb before: state=$(cat $AUD/state 2>/dev/null) func=$(cat $AUD/functions 2>/dev/null) vid=$(cat $AUD/idVendor 2>/dev/null) pid=$(cat $AUD/idProduct 2>/dev/null)"
+
+	# If kernel already has working RNDIS CONFIGURED with Huawei IDs, do not
+	# bounce the gadget (Windows hates mid-probe resets). Only adjust wceis.
+	st=$(cat "$AUD/state" 2>/dev/null)
+	fn=$(cat "$AUD/functions" 2>/dev/null)
+	vid=$(cat "$AUD/idVendor" 2>/dev/null)
+	pid=$(cat "$AUD/idProduct" 2>/dev/null)
+
+	need_rebind=0
+	case "$fn" in
+		*rndis*) ;;
+		*) need_rebind=1 ;;
+	esac
+	[ "$vid" = "12d1" ] || [ "$vid" = "12D1" ] || need_rebind=1
+	[ "$pid" = "1039" ] || need_rebind=1
+
+	# wceis=0 => control interface class CDC 02/06 (RNDIS via usbnet), which
+	# Linux rndis_host auto-detects and brings up as usb0. wceis=1 gives
+	# class E0/01/03 (Wireless/RNDIS) that Windows auto-picks but Linux
+	# rndis_host cannot probe, so no usb0 appears on the host.
+	if [ -f "$AUD/f_rndis/wceis" ]; then
+		cur=$(cat "$AUD/f_rndis/wceis" 2>/dev/null)
+		if [ "$cur" != "0" ]; then
+			# changing wceis requires disable/enable
+			need_rebind=1
+			log "will set wceis=0 (was '$cur')"
+		else
+			log "wceis already 0"
+		fi
+	else
+		log "no f_rndis/wceis sysfs"
+	fi
+
+	if [ -f "$AUD/f_rndis/ethaddr" ]; then
+		echo '42:16:d0:00:00:01' > "$AUD/f_rndis/ethaddr" 2>/dev/null || true
+		log "ethaddr=$(cat $AUD/f_rndis/ethaddr 2>/dev/null)"
+	fi
+
+	if [ "$need_rebind" = "1" ] || [ "$st" != "CONFIGURED" ]; then
+		log "rebind rndis/wceis"
+		echo 0 > "$AUD/enable" 2>/dev/null || true
+		$BB sleep 1
+		[ -f "$AUD/f_rndis/wceis" ] && echo 0 > "$AUD/f_rndis/wceis" 2>/dev/null
+		echo 12D1 > "$AUD/idVendor" 2>/dev/null || true
+		echo 1039 > "$AUD/idProduct" 2>/dev/null || true
+		echo rndis > "$AUD/functions" 2>/dev/null || echo rndis,adb > "$AUD/functions" 2>/dev/null || true
+		echo 1 > "$AUD/enable" 2>/dev/null || true
+		$BB sleep 2
+	else
+		log "keep existing CONFIGURED rndis gadget"
+	fi
+
+	log "android_usb after: state=$(cat $AUD/state 2>/dev/null) func=$(cat $AUD/functions 2>/dev/null) vid=$(cat $AUD/idVendor 2>/dev/null) pid=$(cat $AUD/idProduct 2>/dev/null) wceis=$(cat $AUD/f_rndis/wceis 2>/dev/null)"
+}
+
+setup_usb_rndis
+
+setup_net() {
+	i=0
+	while [ $i -lt 40 ]; do
+		for iface in rndis0 usb0 eth0; do
+			if [ -d "/sys/class/net/$iface" ]; then
+				log "found $iface -> 172.16.42.1/24"
+				$BB ifconfig $iface 172.16.42.1 netmask 255.255.255.0 up
+				return 0
+			fi
+		done
+		i=$((i + 1))
+		$BB sleep 1
+	done
+	log "no usb net iface found"
+	$BB ls /sys/class/net >> /tmp/tiny-init.log 2>/dev/null
+	return 1
+}
+
+setup_net
+
+start_shells() {
+	if ! $BB pidof telnetd >/dev/null 2>&1; then
+		$BB telnetd -l /bin/sh -p 23
+		log "telnetd :23 pid=$($BB pidof telnetd)"
+	fi
+	if ! $BB pidof nc >/dev/null 2>&1; then
+		# busybox nc -ll = listen, lingering (multi-client); -e spawns shell
+		($BB nc -ll -p 2323 -e /bin/sh) >/tmp/nc.log 2>&1 &
+		log "nc :2323 pid=$($BB pidof nc)"
+	fi
+}
+
+start_shells
+
+log "keepalive"
+while true; do
+	for iface in rndis0 usb0; do
+		if [ -d "/sys/class/net/$iface" ]; then
+			$BB ifconfig $iface 172.16.42.1 netmask 255.255.255.0 up 2>/dev/null || true
+		fi
+	done
+	start_shells
+	$BB sleep 5
+done
