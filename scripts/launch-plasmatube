@@ -1,0 +1,51 @@
+#!/bin/sh
+# launch-plasmatube: Optimized PlasmaTube runner for LeEco Le 2 (Adreno 510 GPU, Wayland)
+
+export XDG_RUNTIME_DIR=/run/user/1000
+export WAYLAND_DISPLAY=wayland-0
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+export PULSE_SERVER="unix:/run/user/1000/pulse/native"
+
+export QT_QPA_PLATFORM=wayland
+export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+
+# Ensure session dbus is running
+if [ ! -S /run/user/1000/bus ]; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+    else
+        dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+    fi
+fi
+
+# Ensure PipeWire audio server and PulseAudio bridge are running
+if ! pidof pipewire >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 pipewire &"
+    else
+        pipewire &
+    fi
+    sleep 0.2
+fi
+if ! pidof wireplumber >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 wireplumber &"
+    else
+        wireplumber &
+    fi
+    sleep 0.2
+fi
+if ! pidof pipewire-pulse >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 pipewire-pulse &"
+    else
+        pipewire-pulse &
+    fi
+    sleep 0.2
+fi
+
+if [ "$(id -u)" -eq 0 ]; then
+    exec doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 DBUS_SESSION_BUS_ADDRESS=\"$DBUS_SESSION_BUS_ADDRESS\" PULSE_SERVER=\"$PULSE_SERVER\" QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 plasmatube \"$@\""
+else
+    exec plasmatube "$@"
+fi

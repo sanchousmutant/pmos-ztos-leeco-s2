@@ -7,3 +7,4 @@ medium | orange | Decibels | music | decibels
 medium | accent | Chromium | browser | /usr/local/bin/launch-chromium
 medium | accent | Files | folder | ztfiles
 medium | cyan | Devices | @ztdevices | ztdevices
+medium | red | PlasmaTube | video | /usr/local/bin/launch-plasmatube
