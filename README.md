@@ -40,7 +40,7 @@
 | Звук | Работает | ADSP/QDSP6 → Quinary MI2S → TFA9890, PipeWire, фикс `q6asm-dai` (#19) |
 | Громкость | Работает | ztmetro + `ztos-sounds`, media- и ring-громкость |
 | Оболочка | Работает | ztMETRO: Start, обои с параллаксом, экран блокировки, меню питания, настройки, OSK |
-| Приложения | Работает | ztapps, ztsettings, ztpower, ztfiles, Angelfish, Chromium, терминал |
+| Приложения | Работает | ztapps, ztsettings, ztpower, ztfiles, YouTube PWA, Instagram PWA, Angelfish, Chromium, терминал |
 | USB RNDIS + SSH | Работает | `172.16.42.1`, драйвер и сертификат в репозитории |
 | zram | Работает | ~50% RAM, lzo-rle, приоритет 100 |
 | Захват звука | Не реализовано | Нет backend для MultiMedia2: `arecord` → `EINVAL` |
@@ -217,10 +217,13 @@
   - **Аппаратное 3D-ускорение:** рендеринг через GPU Adreno 510 (`freedreno`) по EGL/GLES2 без задержек интерфейса.
   - **Аудиоподсистема PipeWire 1.6.8:** автоматический подъем аудиосервера PipeWire, сессионного менеджера WirePlumber и моста эмуляции PulseAudio (`pipewire-pulse`).
   - **Стриминг звука:** сквозной тракт Chromium → PipeWire проверен: sink `pro-output-0` (профиль `pro-audio`), PCM `RUNNING`, `hw_ptr` растёт, задержек и выпадений нет; громкость синхронизирована с лаунчером (`wpctl`). Акустически (внешний микрофон) подтверждён тон 1 кГц после исправления `q6asm-dai` в ядре #19 (BR-034).
-  - **YouTube & Instagram PWA (Автономные веб-приложения без рекламы):** лаунчеры [`scripts/launch-youtube`](scripts/launch-youtube) и [`scripts/launch-instagram`](scripts/launch-instagram) запускают мобильные версии сервисов в изолированных профилях (`~/.config/youtube-app`, `~/.config/instagram-app`) в полноэкранном тач-режиме (`--app`) с расширением uBlock Origin, аппаратным ускорением Adreno 510 GPU и плитками в главном меню ztMETRO Start.
+  - **YouTube & Instagram PWA (Автономные веб-приложения без рекламы):**
+    - **YouTube:** лаунчер [`scripts/launch-youtube`](scripts/launch-youtube) запускает `https://m.youtube.com` в отдельном изолированном профиле (`~/.config/youtube-app`) в полноэкранном тач-режиме (`--app`) с предустановленным расширением uBlock Origin, аппаратным ускорением Adreno 510 GPU и двухколоночной сеткой (`YT_SCALE=0.5`).
+    - **Instagram:** лаунчер [`scripts/launch-instagram`](scripts/launch-instagram) запускает `https://www.instagram.com` в изолированном профиле (`~/.config/instagram-app`) с блокировщиком uBlock Origin, нативным масштабом 1:1 (`INSTA_SCALE=1.0`) и отдельной плиткой цвета маджента в ztMETRO Start.
+    - **Интеграция:** зарегистрированы десктоп-файлы [`configs/system/youtube.desktop`](configs/system/youtube.desktop) и [`configs/system/instagram.desktop`](configs/system/instagram.desktop), а системный [`configs/system/chromium.conf`](configs/system/chromium.conf) очищен от конфликтующих глобальных масштабов.
 - **Обои рабочего стола и экрана блокировки (ztMETRO Wallpapers):**
   - Поддерживаются нативные прозрачные плитки в стиле Windows Phone 8.1 / 10 Mobile с параллакс-прокруткой фонового изображения на рабочем столе Start (`start_wallpaper`) и отдельное фото на экране блокировки (`lock_wallpaper`).
-  - Утилита [`scripts/set-wallpaper`](scripts/set-wallpaper) позволяет переключать обои на лету без перезагрузки: `set-wallpaper <путь_к_картинке>`.
+  - Утилита [`scripts/set-wallpaper`](scripts/set-wallpaper) позволяет переключать обои на лету без перезагрузки: `set-wallpaper <путь_к_картинке>`. При вызове без параметров автоматически находит и применяет самое свежее скачанное изображение из `~/Downloads`.
   - Установлен официальный пакет `postmarketos-artwork-wallpapers`, папка для пользовательских обоев: `~/Pictures/Wallpapers/`.
   - Конфигурация ztMETRO сохранена в [`configs/ztmetro/config`](configs/ztmetro/config) и [`configs/ztmetro/tiles`](configs/ztmetro/tiles).
   - **Безопасный запуск и интеграция процессов в Cage:** дочерние процессы запускаются через `setsid()` с закрытием унаследованных дескрипторов (`fd >= 3`) и автоматическим сбором завершенных процессов (`signal(SIGCHLD, SIG_IGN)`). При закрытии браузера фокус и отрисовка мгновенно возвращаются в `zrn-launcher`.
@@ -281,11 +284,27 @@ ssh -i "$HOME\.ssh\id_rsa" -o StrictHostKeyChecking=no root@172.16.42.1
 
 ---
 
-## 6. Управление Wi-Fi из консоли
+## 6. Консольные утилиты и управление системой
 
-На телефоне установлены утилиты для быстрого управления беспроводным интерфейсом:
+На телефоне установлены утилиты для быстрого управления беспроводной связью, мультимедиа и интерфейсом:
 
-### Сканирование доступных сетей:
+### Смена обоев рабочего стола и экрана блокировки:
+```sh
+# Автоматически применить самое свежее скачанное фото из ~/Downloads
+set-wallpaper
+
+# Установить конкретное изображение на Start и Lock screen
+set-wallpaper ~/Downloads/my_wallpaper.jpg
+
+# Установить только для плиток Start (параллакс) или только Lock screen
+set-wallpaper --start ~/Pictures/Wallpapers/postmarketos_dark.png
+set-wallpaper --lock ~/Pictures/Wallpapers/lock.jpg
+
+# Сброс к чистому акцентному цвету без фото
+set-wallpaper --clear
+```
+
+### Сканирование доступных сетей Wi-Fi:
 ```sh
 wifi-scan
 ```
@@ -306,10 +325,10 @@ wifi-connect "Имя_Сети" "Пароль"
 | Путь | Назначение |
 |---|---|
 | `README.md`, `README_en.md`, `LICENSE` | Описание порта и лицензия проекта |
-| `configs/` | Конфигурационные файлы: загрузчик (`boot/`), службы OpenRC (`openrc/`), системные настройки звука/экрана (`system/`) |
+| `configs/` | Конфигурационные файлы: загрузчик (`boot/`), службы OpenRC (`openrc/`), системные настройки (`system/`), оболочка ztMETRO (`ztmetro/config`, `ztmetro/tiles`) |
 | `docs/` | Журнал bug report, changelog, анализ подсистем, скриншоты |
 | `kernel/` | Патчи ядра и bootloader (`lk2nd`), `.config`, DTS, драйвер панели NT35596s, скрипт сборки `build.sh` |
-| `scripts/` | Скрипты развертывания (`deploy/`), лаунчеры приложений, сетевые утилиты и демоны |
+| `scripts/` | Скрипты развертывания (`deploy/`), лаунчеры PWA (`launch-youtube`, `launch-instagram`), утилита обоев (`set-wallpaper`), сетевые утилиты и демоны |
 | `tests/` | Скрипты акустического тестирования и верификации звука микрофоном |
 | `tools/` | Драйвер Windows RNDIS (`windows-rndis/`), сборщик initramfs (`initramfs/`), генератор панели и сборщик DTB |
 | `firmware-s2/` | Калибровочные файлы беспроводного модуля WCNSS (`.bin`, `.ini`, `.dat`) |

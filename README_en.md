@@ -40,7 +40,7 @@ A port of **postmarketOS (Alpine Linux)** to the **LeEco Le 2** smartphone (`s2`
 | Audio | Working | ADSP/QDSP6 → Quinary MI2S → TFA9890, PipeWire, `q6asm-dai` fix (#19) |
 | Volume Control | Working | ztmetro + `ztos-sounds`, media and ring volume |
 | Mobile Shell | Working | ztMETRO: Start with parallax wallpapers, Lock screen, Power menu, Settings, OSK |
-| Applications | Working | ztapps, ztsettings, ztpower, ztfiles, Angelfish, Chromium, Terminal |
+| Applications | Working | ztapps, ztsettings, ztpower, ztfiles, YouTube PWA, Instagram PWA, Angelfish, Chromium, Terminal |
 | USB RNDIS + SSH | Working | `172.16.42.1`, Windows driver & certificate included in repo |
 | zram | Working | ~50% RAM, lzo-rle, priority 100 |
 | Audio Capture | Not implemented | No backend for MultiMedia2: `arecord` → `EINVAL` |
@@ -216,10 +216,13 @@ The application [`zrn-sdk/examples/launcher/main.c`](https://github.com/Zerone-L
   - **Hardware 3D Acceleration:** Adreno 510 GPU rendering via EGL/GLES2.
   - **PipeWire 1.6.8 Audio:** automatic PipeWire daemon, WirePlumber, and `pipewire-pulse` bridge startup.
   - **Audio Streaming:** Chromium → PipeWire verified: sink `pro-output-0` (`pro-audio` profile), PCM `RUNNING`, `hw_ptr` advances, no underruns; volume synchronized with launcher (`wpctl`). External microphone confirms 1 kHz audio output following the `q6asm-dai` fix in kernel #19 (BR-034).
-  - **YouTube & Instagram PWA (Standalone Ad-Free Web Apps):** runners [`scripts/launch-youtube`](scripts/launch-youtube) and [`scripts/launch-instagram`](scripts/launch-instagram) launch services in isolated profiles (`~/.config/youtube-app`, `~/.config/instagram-app`) in full-screen touch mode (`--app`) with preloaded uBlock Origin, Adreno 510 GPU acceleration, and Start tiles in ztMETRO.
+  - **YouTube & Instagram PWA (Standalone Ad-Free Web Apps):**
+    - **YouTube:** runner [`scripts/launch-youtube`](scripts/launch-youtube) launches `https://m.youtube.com` in an isolated profile (`~/.config/youtube-app`) in full-screen touch mode (`--app`) with preloaded uBlock Origin, Adreno 510 GPU acceleration, and a two-column grid (`YT_SCALE=0.5`).
+    - **Instagram:** runner [`scripts/launch-instagram`](scripts/launch-instagram) launches `https://www.instagram.com` in an isolated profile (`~/.config/instagram-app`) with preloaded uBlock Origin, native 1:1 mobile density (`INSTA_SCALE=1.0`), and a dedicated magenta Start tile.
+    - **Integration:** registered desktop shortcuts [`configs/system/youtube.desktop`](configs/system/youtube.desktop) and [`configs/system/instagram.desktop`](configs/system/instagram.desktop), with [`configs/system/chromium.conf`](configs/system/chromium.conf) sanitized of conflicting global scales.
 - **Start & Lock Screen Wallpapers (ztMETRO Wallpapers):**
   - Native Windows Phone 8.1 / 10 Mobile tile transparency with parallax background image scrolling on Start (`start_wallpaper`) and dedicated background under the lock screen clock (`lock_wallpaper`).
-  - Helper utility [`scripts/set-wallpaper`](scripts/set-wallpaper) applies wallpapers on the fly without restarting the shell: `set-wallpaper <path_to_image>`.
+  - Helper utility [`scripts/set-wallpaper`](scripts/set-wallpaper) applies wallpapers on the fly without restarting the shell: `set-wallpaper <path_to_image>`. When called without arguments, it automatically finds and applies the most recent downloaded image in `~/Downloads`.
   - Installed official `postmarketos-artwork-wallpapers` package, user wallpaper repository: `~/Pictures/Wallpapers/`.
   - Full configuration stored in [`configs/ztmetro/config`](configs/ztmetro/config) and [`configs/ztmetro/tiles`](configs/ztmetro/tiles).
   - **Process Supervision:** child processes detached using `setsid()`, leaked file descriptors closed (`fd >= 3`), zombies reaped via `signal(SIGCHLD, SIG_IGN)`. Focus instantly reverts to `zrn-launcher` on browser exit.
@@ -280,9 +283,25 @@ ssh -i "$HOME\.ssh\id_rsa" -o StrictHostKeyChecking=no root@172.16.42.1
 
 ---
 
-## 6. Command-Line Wi-Fi Controls
+## 6. CLI Utilities & System Controls
 
-Quick CLI helpers available on the device:
+Command-line utilities installed on the device for fast network, media, and interface management:
+
+### Wallpaper Management (Start & Lock Screen):
+```sh
+# Automatically find and apply the most recent image from ~/Downloads
+set-wallpaper
+
+# Apply a specific image to both Start and Lock screen
+set-wallpaper ~/Downloads/my_wallpaper.jpg
+
+# Apply only to Start screen tiles (parallax) or only Lock screen
+set-wallpaper --start ~/Pictures/Wallpapers/postmarketos_dark.png
+set-wallpaper --lock ~/Pictures/Wallpapers/lock.jpg
+
+# Revert to clean solid accent color without photo
+set-wallpaper --clear
+```
 
 ### Scan available networks:
 ```sh
@@ -305,10 +324,10 @@ Configures WPA Supplicant, establishes connection, and triggers DHCP lease (`udh
 | Path | Purpose |
 |---|---|
 | `README.md`, `README_en.md`, `LICENSE` | Documentation and project license |
-| `configs/` | System configurations: bootloader (`boot/`), OpenRC services (`openrc/`), system/audio settings (`system/`) |
+| `configs/` | System configurations: bootloader (`boot/`), OpenRC services (`openrc/`), system settings (`system/`), ztMETRO shell (`ztmetro/config`, `ztmetro/tiles`) |
 | `docs/` | Bug reports, changelog, audit notes, screenshots |
 | `kernel/` | Kernel & bootloader (`lk2nd`) patches, `.config`, DTS, NT35596s panel driver, `build.sh` |
-| `scripts/` | Deployment scripts (`deploy/`), app launchers, network utilities, key daemon |
+| `scripts/` | Deployment scripts (`deploy/`), PWA launchers (`launch-youtube`, `launch-instagram`), wallpaper tool (`set-wallpaper`), network utilities, key daemon |
 | `tests/` | Acoustic testing and hardware audio verification scripts |
 | `tools/` | Windows RNDIS driver (`windows-rndis/`), initramfs builder (`initramfs/`), panel generator, DTB builder |
 | `firmware-s2/` | WCNSS calibration files (`.bin`, `.ini`, `.dat`) |
