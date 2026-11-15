@@ -8,3 +8,4 @@ medium | accent | Chromium | browser | /usr/local/bin/launch-chromium
 medium | accent | Files | folder | ztfiles
 medium | cyan | Devices | @ztdevices | ztdevices
 medium | red | YouTube | @chrome-agimnkijcaahngcdmfeangaknmldooml-Default.png | /usr/local/bin/launch-youtube
+medium | magenta | Instagram | @instagram.png | /usr/local/bin/launch-instagram

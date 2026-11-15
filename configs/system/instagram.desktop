@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Terminal=false
+Type=Application
+Name=Instagram
+GenericName=Instagram Mobile
+Comment=Browse Instagram stories, reels and feed smoothly
+Exec=/usr/local/bin/launch-instagram
+Icon=instagram
+Categories=Network;AudioVideo;Video;
+StartupWMClass=instagram

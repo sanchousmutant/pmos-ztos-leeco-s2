@@ -216,7 +216,7 @@ The application [`zrn-sdk/examples/launcher/main.c`](https://github.com/Zerone-L
   - **Hardware 3D Acceleration:** Adreno 510 GPU rendering via EGL/GLES2.
   - **PipeWire 1.6.8 Audio:** automatic PipeWire daemon, WirePlumber, and `pipewire-pulse` bridge startup.
   - **Audio Streaming:** Chromium → PipeWire verified: sink `pro-output-0` (`pro-audio` profile), PCM `RUNNING`, `hw_ptr` advances, no underruns; volume synchronized with launcher (`wpctl`). External microphone confirms 1 kHz audio output following the `q6asm-dai` fix in kernel #19 (BR-034).
-  - **YouTube PWA (Standalone Ad-Free Player):** runner [`scripts/launch-youtube`](scripts/launch-youtube) launches `https://m.youtube.com` in an isolated profile (`~/.config/youtube-app`) in full-screen touch mode (`--app`) with preloaded uBlock Origin, Adreno 510 GPU acceleration, and a Start tile in ztMETRO.
+  - **YouTube & Instagram PWA (Standalone Ad-Free Web Apps):** runners [`scripts/launch-youtube`](scripts/launch-youtube) and [`scripts/launch-instagram`](scripts/launch-instagram) launch services in isolated profiles (`~/.config/youtube-app`, `~/.config/instagram-app`) in full-screen touch mode (`--app`) with preloaded uBlock Origin, Adreno 510 GPU acceleration, and Start tiles in ztMETRO.
   - **Process Supervision:** child processes detached using `setsid()`, leaked file descriptors closed (`fd >= 3`), zombies reaped via `signal(SIGCHLD, SIG_IGN)`. Focus instantly reverts to `zrn-launcher` on browser exit.
 
 ---
