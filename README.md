@@ -1,5 +1,9 @@
 # LeEco Le 2 (s2) — postmarketOS + ztOS
 
+[English](README_en.md) | **Русский**
+
+---
+
 Порт **postmarketOS (Alpine Linux)** на смартфон **LeEco Le 2** (`s2`, Qualcomm MSM8976 / Snapdragon 652) с mainline-ядром **Linux 6.18.7**, DRM/KMS, аппаратным ускорением **Adreno 510 (Freedreno)**, Wi-Fi 802.11ac, Bluetooth, зарядкой SMBCHG и мобильной оболочкой **ztMETRO** из **ztOS**.
 
 **Ссылки:** [postmarketOS](https://postmarketos.org/) · [pmaports](https://gitlab.com/postmarketOS/pmaports) · [ztOS](https://github.com/Zerone-Laboratories/ztOS) · [zrn-sdk](https://github.com/Zerone-Laboratories/zrn-sdk)
