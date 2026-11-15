@@ -1,5 +1,5 @@
 #!/bin/sh
-# launch-materialious: Standalone PWA runner for Materialious (Material You YouTube) on LeEco Le 2
+# launch-piped: Standalone PWA runner for Piped (ad-free YouTube) on LeEco Le 2
 
 export XDG_RUNTIME_DIR=/run/user/1000
 export WAYLAND_DISPLAY=wayland-0
@@ -41,10 +41,13 @@ if ! pidof pipewire-pulse >/dev/null 2>&1; then
     sleep 0.2
 fi
 
-APP_URL="https://materialio.us"
+APP_URL="https://piped.video"
 
+# Use separate user-data-dir so it never merges into an existing browser window
 CHROMIUM_CMD="chromium \
     --app=\"$APP_URL\" \
+    --user-data-dir=/home/pmos/.config/piped-app \
+    --class=piped \
     --enable-features=UseOzonePlatform \
     --ozone-platform=wayland \
     --ignore-gpu-blocklist \

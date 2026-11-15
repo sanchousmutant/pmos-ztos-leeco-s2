@@ -8,4 +8,4 @@ medium | accent | Chromium | browser | /usr/local/bin/launch-chromium
 medium | accent | Files | folder | ztfiles
 medium | cyan | Devices | @ztdevices | ztdevices
 medium | red | PlasmaTube | video | /usr/local/bin/launch-plasmatube
-medium | crimson | Materialious | video | /usr/local/bin/launch-materialious
+medium | crimson | Piped | video | /usr/local/bin/launch-piped

@@ -1,7 +1,7 @@
 [Desktop Entry]
-Name=Materialious
-Comment=Material You YouTube client
-Exec=/usr/local/bin/launch-materialious
+Name=Piped YouTube
+Comment=Privacy-friendly YouTube client
+Exec=/usr/local/bin/launch-piped
 Terminal=false
 Type=Application
 Icon=youtube
