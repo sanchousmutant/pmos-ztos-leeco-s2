@@ -39,7 +39,7 @@ A port of **postmarketOS (Alpine Linux)** to the **LeEco Le 2** smartphone (`s2`
 | Bluetooth | Partially working | `hci0` and BlueZ 5.86 initialize; A2DP with real headset unverified |
 | Audio | Working | ADSP/QDSP6 → Quinary MI2S → TFA9890, PipeWire, `q6asm-dai` fix (#19) |
 | Volume Control | Working | ztmetro + `ztos-sounds`, media and ring volume |
-| Mobile Shell | Working | ztMETRO: Start with parallax wallpapers, Lock screen, Power menu, Settings, OSK |
+| Mobile Shell | Working | ztMETRO: Start with parallax wallpapers, navbar autohide (gestures), Lock screen, Power menu, Settings, OSK |
 | Applications | Working | ztapps, ztsettings, ztpower, ztfiles, YouTube PWA, Instagram PWA, Angelfish, Chromium, Terminal |
 | USB RNDIS + SSH | Working | `172.16.42.1`, Windows driver & certificate included in repo |
 | zram | Working | ~50% RAM, lzo-rle, priority 100 |
@@ -305,6 +305,17 @@ set-wallpaper --lock ~/Pictures/Wallpapers/lock.jpg
 # Revert to clean solid accent color without photo
 set-wallpaper --clear
 ```
+
+### Navigation Bar Configuration (ztMETRO Navbar):
+The navigation bar mode is set in `~/.config/ztmetro/config`:
+```ini
+nav_bar = autohide   # autohide (gesture-driven), on (always visible), off (disabled)
+```
+- **Swipe up from bottom edge** (or tap near the bottom bezel) — smoothly reveals the navigation bar with Back, Start, and Search buttons.
+- **Swipe down on open bar** — immediately dismisses the navigation bar.
+- **3.5s Inactivity Timeout** — automatically slides away when no touches are detected.
+- **Tap into app area** — tapping anywhere in an application above the bar immediately hides the bar and forwards the touch to the app.
+- Reload on the fly after editing config: `killall -HUP ztmetro` or restart the Wayland session.
 
 ### Scan available networks:
 ```sh
