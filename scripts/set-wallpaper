@@ -3,17 +3,33 @@
 
 CONFIG="/home/pmos/.config/ztmetro/config"
 
+find_latest_image() {
+    # Search Downloads and Pictures for the newest image file
+    ls -t /home/pmos/Downloads/*.[jJ][pP][gG] \
+          /home/pmos/Downloads/*.[jJ][pP][eE][gG] \
+          /home/pmos/Downloads/*.[pP][nN][gG] \
+          /home/pmos/Downloads/*.[wW][eE][bB][pP] \
+          /home/pmos/Pictures/Wallpapers/*.[jJ][pP][gG] \
+          /home/pmos/Pictures/Wallpapers/*.[jJ][pP][eE][gG] \
+          /home/pmos/Pictures/Wallpapers/*.[pP][nN][gG] \
+          /home/pmos/Pictures/Wallpapers/*.[wW][eE][bB][pP] 2>/dev/null | head -n 1
+}
+
 show_help() {
-    echo "Usage: set-wallpaper [OPTIONS] <path_to_image>"
+    echo "Usage: set-wallpaper [OPTIONS] [path_to_image]"
+    echo ""
+    echo "Without arguments:"
+    echo "  set-wallpaper       Automatically applies the most recently downloaded image"
     echo ""
     echo "Options:"
-    echo "  --start <image>   Set wallpaper only for Start screen tiles"
-    echo "  --lock <image>    Set wallpaper only for Lock screen"
-    echo "  --clear           Remove background image (revert to solid accent)"
-    echo "  --help            Show this help message"
+    echo "  --start <image>     Set wallpaper only for Start screen tiles"
+    echo "  --lock <image>      Set wallpaper only for Lock screen"
+    echo "  --clear             Remove background photo (revert to solid accent)"
+    echo "  --help              Show this help message"
     echo ""
-    echo "Example:"
-    echo "  set-wallpaper ~/Pictures/Wallpapers/photo.jpg"
+    echo "Examples:"
+    echo "  set-wallpaper"
+    echo "  set-wallpaper ~/Downloads/my_photo.jpg"
 }
 
 set_key() {
@@ -33,7 +49,26 @@ reload_ztmetro() {
     fi
 }
 
-if [ -z "$1" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+# If no arguments provided, automatically find and apply the latest downloaded image
+if [ -z "$1" ]; then
+    LATEST=$(find_latest_image)
+    if [ -n "$LATEST" ] && [ -f "$LATEST" ]; then
+        REAL_PATH=$(readlink -f "$LATEST")
+        set_key "start_wallpaper" "$REAL_PATH"
+        set_key "lock_wallpaper" "$REAL_PATH"
+        reload_ztmetro
+        echo "Applied latest downloaded wallpaper:"
+        echo "  -> $REAL_PATH"
+        exit 0
+    else
+        echo "No images found in ~/Downloads or ~/Pictures/Wallpapers."
+        echo ""
+        show_help
+        exit 1
+    fi
+fi
+
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     show_help
     exit 0
 fi
@@ -48,6 +83,7 @@ fi
 
 if [ "$1" = "--start" ]; then
     IMG="$2"
+    [ -z "$IMG" ] && IMG=$(find_latest_image)
     if [ ! -f "$IMG" ]; then
         echo "Error: file not found: $IMG" >&2
         exit 1
@@ -61,6 +97,7 @@ fi
 
 if [ "$1" = "--lock" ]; then
     IMG="$2"
+    [ -z "$IMG" ] && IMG=$(find_latest_image)
     if [ ! -f "$IMG" ]; then
         echo "Error: file not found: $IMG" >&2
         exit 1
