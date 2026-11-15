@@ -1,0 +1,72 @@
+#!/bin/sh
+# launch-materialious: Standalone PWA runner for Materialious (Material You YouTube) on LeEco Le 2
+
+export XDG_RUNTIME_DIR=/run/user/1000
+export WAYLAND_DISPLAY=wayland-0
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+export PULSE_SERVER="unix:/run/user/1000/pulse/native"
+
+# Ensure session dbus is running
+if [ ! -S /run/user/1000/bus ]; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+    else
+        dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork
+    fi
+fi
+
+# Ensure PipeWire audio server and PulseAudio bridge are running for web audio
+if ! pidof pipewire >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 pipewire &"
+    else
+        pipewire &
+    fi
+    sleep 0.2
+fi
+if ! pidof wireplumber >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 wireplumber &"
+    else
+        wireplumber &
+    fi
+    sleep 0.2
+fi
+if ! pidof pipewire-pulse >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+        doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 pipewire-pulse &"
+    else
+        pipewire-pulse &
+    fi
+    sleep 0.2
+fi
+
+APP_URL="https://materialio.us"
+
+CHROMIUM_CMD="chromium \
+    --app=\"$APP_URL\" \
+    --enable-features=UseOzonePlatform \
+    --ozone-platform=wayland \
+    --ignore-gpu-blocklist \
+    --enable-gpu-rasterization \
+    --enable-zero-copy \
+    --disable-vulkan \
+    --use-gl=angle \
+    --use-angle=gles \
+    --enable-wayland-ime \
+    --enable-virtual-keyboard \
+    --touch-events=enabled \
+    --start-maximized \
+    --force-device-scale-factor=2.0 \
+    --no-sandbox \
+    --no-first-run \
+    --no-default-browser-check \
+    --disable-session-crashed-bubble \
+    --autoplay-policy=no-user-gesture-required \
+    --user-agent=\"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36\""
+
+if [ "$(id -u)" -eq 0 ]; then
+    exec doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 DBUS_SESSION_BUS_ADDRESS=\"$DBUS_SESSION_BUS_ADDRESS\" PULSE_SERVER=\"$PULSE_SERVER\" $CHROMIUM_CMD"
+else
+    exec sh -c "$CHROMIUM_CMD"
+fi

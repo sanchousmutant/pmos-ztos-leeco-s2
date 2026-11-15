@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Materialious
+Comment=Material You YouTube client
+Exec=/usr/local/bin/launch-materialious
+Terminal=false
+Type=Application
+Icon=youtube
+Categories=AudioVideo;Video;Player;
