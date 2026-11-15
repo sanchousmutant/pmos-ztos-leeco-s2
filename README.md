@@ -39,7 +39,7 @@
 | Bluetooth | Работает частично | `hci0` и BlueZ 5.86 поднимаются; A2DP с реальной гарнитурой не проверен |
 | Звук | Работает | ADSP/QDSP6 → Quinary MI2S → TFA9890, PipeWire, фикс `q6asm-dai` (#19) |
 | Громкость | Работает | ztmetro + `ztos-sounds`, media- и ring-громкость |
-| Оболочка | Работает | ztMETRO: Start, блокировка, меню питания, настройки, OSK |
+| Оболочка | Работает | ztMETRO: Start, обои с параллаксом, экран блокировки, меню питания, настройки, OSK |
 | Приложения | Работает | ztapps, ztsettings, ztpower, ztfiles, Angelfish, Chromium, терминал |
 | USB RNDIS + SSH | Работает | `172.16.42.1`, драйвер и сертификат в репозитории |
 | zram | Работает | ~50% RAM, lzo-rle, приоритет 100 |
@@ -218,6 +218,11 @@
   - **Аудиоподсистема PipeWire 1.6.8:** автоматический подъем аудиосервера PipeWire, сессионного менеджера WirePlumber и моста эмуляции PulseAudio (`pipewire-pulse`).
   - **Стриминг звука:** сквозной тракт Chromium → PipeWire проверен: sink `pro-output-0` (профиль `pro-audio`), PCM `RUNNING`, `hw_ptr` растёт, задержек и выпадений нет; громкость синхронизирована с лаунчером (`wpctl`). Акустически (внешний микрофон) подтверждён тон 1 кГц после исправления `q6asm-dai` в ядре #19 (BR-034).
   - **YouTube & Instagram PWA (Автономные веб-приложения без рекламы):** лаунчеры [`scripts/launch-youtube`](scripts/launch-youtube) и [`scripts/launch-instagram`](scripts/launch-instagram) запускают мобильные версии сервисов в изолированных профилях (`~/.config/youtube-app`, `~/.config/instagram-app`) в полноэкранном тач-режиме (`--app`) с расширением uBlock Origin, аппаратным ускорением Adreno 510 GPU и плитками в главном меню ztMETRO Start.
+- **Обои рабочего стола и экрана блокировки (ztMETRO Wallpapers):**
+  - Поддерживаются нативные прозрачные плитки в стиле Windows Phone 8.1 / 10 Mobile с параллакс-прокруткой фонового изображения на рабочем столе Start (`start_wallpaper`) и отдельное фото на экране блокировки (`lock_wallpaper`).
+  - Утилита [`scripts/set-wallpaper`](scripts/set-wallpaper) позволяет переключать обои на лету без перезагрузки: `set-wallpaper <путь_к_картинке>`.
+  - Установлен официальный пакет `postmarketos-artwork-wallpapers`, папка для пользовательских обоев: `~/Pictures/Wallpapers/`.
+  - Конфигурация ztMETRO сохранена в [`configs/ztmetro/config`](configs/ztmetro/config) и [`configs/ztmetro/tiles`](configs/ztmetro/tiles).
   - **Безопасный запуск и интеграция процессов в Cage:** дочерние процессы запускаются через `setsid()` с закрытием унаследованных дескрипторов (`fd >= 3`) и автоматическим сбором завершенных процессов (`signal(SIGCHLD, SIG_IGN)`). При закрытии браузера фокус и отрисовка мгновенно возвращаются в `zrn-launcher`.
 
 ---

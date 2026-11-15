@@ -39,7 +39,7 @@ A port of **postmarketOS (Alpine Linux)** to the **LeEco Le 2** smartphone (`s2`
 | Bluetooth | Partially working | `hci0` and BlueZ 5.86 initialize; A2DP with real headset unverified |
 | Audio | Working | ADSP/QDSP6 → Quinary MI2S → TFA9890, PipeWire, `q6asm-dai` fix (#19) |
 | Volume Control | Working | ztmetro + `ztos-sounds`, media and ring volume |
-| Mobile Shell | Working | ztMETRO: Start, Lockscreen, Power menu, Settings, OSK |
+| Mobile Shell | Working | ztMETRO: Start with parallax wallpapers, Lock screen, Power menu, Settings, OSK |
 | Applications | Working | ztapps, ztsettings, ztpower, ztfiles, Angelfish, Chromium, Terminal |
 | USB RNDIS + SSH | Working | `172.16.42.1`, Windows driver & certificate included in repo |
 | zram | Working | ~50% RAM, lzo-rle, priority 100 |
@@ -217,6 +217,11 @@ The application [`zrn-sdk/examples/launcher/main.c`](https://github.com/Zerone-L
   - **PipeWire 1.6.8 Audio:** automatic PipeWire daemon, WirePlumber, and `pipewire-pulse` bridge startup.
   - **Audio Streaming:** Chromium → PipeWire verified: sink `pro-output-0` (`pro-audio` profile), PCM `RUNNING`, `hw_ptr` advances, no underruns; volume synchronized with launcher (`wpctl`). External microphone confirms 1 kHz audio output following the `q6asm-dai` fix in kernel #19 (BR-034).
   - **YouTube & Instagram PWA (Standalone Ad-Free Web Apps):** runners [`scripts/launch-youtube`](scripts/launch-youtube) and [`scripts/launch-instagram`](scripts/launch-instagram) launch services in isolated profiles (`~/.config/youtube-app`, `~/.config/instagram-app`) in full-screen touch mode (`--app`) with preloaded uBlock Origin, Adreno 510 GPU acceleration, and Start tiles in ztMETRO.
+- **Start & Lock Screen Wallpapers (ztMETRO Wallpapers):**
+  - Native Windows Phone 8.1 / 10 Mobile tile transparency with parallax background image scrolling on Start (`start_wallpaper`) and dedicated background under the lock screen clock (`lock_wallpaper`).
+  - Helper utility [`scripts/set-wallpaper`](scripts/set-wallpaper) applies wallpapers on the fly without restarting the shell: `set-wallpaper <path_to_image>`.
+  - Installed official `postmarketos-artwork-wallpapers` package, user wallpaper repository: `~/Pictures/Wallpapers/`.
+  - Full configuration stored in [`configs/ztmetro/config`](configs/ztmetro/config) and [`configs/ztmetro/tiles`](configs/ztmetro/tiles).
   - **Process Supervision:** child processes detached using `setsid()`, leaked file descriptors closed (`fd >= 3`), zombies reaped via `signal(SIGCHLD, SIG_IGN)`. Focus instantly reverts to `zrn-launcher` on browser exit.
 
 ---

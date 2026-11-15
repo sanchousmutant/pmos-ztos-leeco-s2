@@ -1,0 +1,84 @@
+#!/bin/sh
+# set-wallpaper: Set Start screen and Lock screen wallpapers in ztMETRO
+
+CONFIG="/home/pmos/.config/ztmetro/config"
+
+show_help() {
+    echo "Usage: set-wallpaper [OPTIONS] <path_to_image>"
+    echo ""
+    echo "Options:"
+    echo "  --start <image>   Set wallpaper only for Start screen tiles"
+    echo "  --lock <image>    Set wallpaper only for Lock screen"
+    echo "  --clear           Remove background image (revert to solid accent)"
+    echo "  --help            Show this help message"
+    echo ""
+    echo "Example:"
+    echo "  set-wallpaper ~/Pictures/Wallpapers/photo.jpg"
+}
+
+set_key() {
+    local key="$1"
+    local val="$2"
+    if grep -q "^${key} *=" "$CONFIG" 2>/dev/null; then
+        sed -i "s|^${key} *=.*|${key} = ${val}|" "$CONFIG"
+    else
+        echo "${key} = ${val}" >> "$CONFIG"
+    fi
+}
+
+reload_ztmetro() {
+    PID=$(pidof ztmetro 2>/dev/null)
+    if [ -n "$PID" ]; then
+        kill -HUP "$PID" 2>/dev/null || true
+    fi
+}
+
+if [ -z "$1" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    show_help
+    exit 0
+fi
+
+if [ "$1" = "--clear" ]; then
+    set_key "start_wallpaper" ""
+    set_key "lock_wallpaper" ""
+    reload_ztmetro
+    echo "Wallpapers cleared (solid accent restored)."
+    exit 0
+fi
+
+if [ "$1" = "--start" ]; then
+    IMG="$2"
+    if [ ! -f "$IMG" ]; then
+        echo "Error: file not found: $IMG" >&2
+        exit 1
+    fi
+    REAL_PATH=$(readlink -f "$IMG")
+    set_key "start_wallpaper" "$REAL_PATH"
+    reload_ztmetro
+    echo "Start wallpaper updated: $REAL_PATH"
+    exit 0
+fi
+
+if [ "$1" = "--lock" ]; then
+    IMG="$2"
+    if [ ! -f "$IMG" ]; then
+        echo "Error: file not found: $IMG" >&2
+        exit 1
+    fi
+    REAL_PATH=$(readlink -f "$IMG")
+    set_key "lock_wallpaper" "$REAL_PATH"
+    reload_ztmetro
+    echo "Lock screen wallpaper updated: $REAL_PATH"
+    exit 0
+fi
+
+IMG="$1"
+if [ ! -f "$IMG" ]; then
+    echo "Error: file not found: $IMG" >&2
+    exit 1
+fi
+REAL_PATH=$(readlink -f "$IMG")
+set_key "start_wallpaper" "$REAL_PATH"
+set_key "lock_wallpaper" "$REAL_PATH"
+reload_ztmetro
+echo "Start and Lock screen wallpaper set to: $REAL_PATH"
