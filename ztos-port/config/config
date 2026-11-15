@@ -5,3 +5,4 @@ haptics = off
 timeout = 60
 lock = on
 menu_speed = 75
+nav_bar = autohide

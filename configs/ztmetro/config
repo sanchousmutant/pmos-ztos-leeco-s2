@@ -23,6 +23,7 @@ haptic_keys = 100
 start_wallpaper = /usr/share/wallpapers/postmarketos/contents/images_dark/2000x2000.png
 lock_wallpaper = /usr/share/wallpapers/postmarketos/contents/images_dark/2000x2000.png
 nav_center_icon = 3
+nav_bar = autohide
 display_size = standard
 style = metro
 dotmatrix_palette = Mono

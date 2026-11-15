@@ -1,8 +1,36 @@
 diff --git a/ztmetro/ztmetro.c b/ztmetro/ztmetro.c
-index 0e0a776..af44f15 100644
+index 0e0a776..a42daf1 100644
 --- a/ztmetro/ztmetro.c
 +++ b/ztmetro/ztmetro.c
-@@ -882,6 +882,10 @@ struct zt_server {
+@@ -130,11 +130,12 @@ static bool demoloop_active(void) {
+ #define NAV_BAR_H	40
+ static int nav_h = NAV_BAR_H;
+ #define NAV_H		nav_h
++#define NAV_SPACE(s)	((s)->nav_autohide ? 0 : NAV_H)
+ #define DEFAULT_KEY_HEIGHT 56
+ #define KEY_GAP		3	/* between keys: the gap is the border */
+ #define TERM_ROW_H	38	/* the Esc / Tab / Ctrl / arrows row for terminals */
+ /* The action centre comes down over everything but the nav bar. */
+-#define SHADE_MAX_H	((double)(server->height - NAV_H))
++#define SHADE_MAX_H	((double)(server->height - NAV_SPACE(server)))
+ #define SHADE_MS	260	/* settling after the finger lets go */
+ #define SCREEN_TIMEOUT_S 60	/* idle time before the screen sleeps, by default */
+ #define TOP_PAD		14	/* Start: above the first row */
+@@ -443,6 +444,7 @@ enum touch_role {
+ 	ROLE_START,	/* tapping or scrolling the Start screen */
+ 	ROLE_CLOSE,	/* started at the left edge over an app */
+ 	ROLE_NAV,	/* on the nav bar */
++	ROLE_NAV_REVEAL,/* edge swipe or tap to reveal nav bar */
+ 	ROLE_LOCK,	/* on the lock screen */
+ 	ROLE_SWITCH,	/* among the app switcher's cards */
+ 	ROLE_KEY,	/* on the keyboard */
+@@ -879,9 +881,16 @@ struct zt_server {
+ 	struct wl_event_source *long_press_timer;
+ 	struct wl_event_source *press_timer;	/* PRESS_DELAY_MS after a finger came down on Start */
+ 	int nav_pressed;		/* -1: none */
++	bool nav_autohide;
++	float nav_slide;		/* 1.0 = visible, 0.0 = hidden */
++	struct wl_event_source *nav_hide_timer;
  	int hwkey_held;			/* the nav button whose own key is down; -1: none */
  	bool hwkey_long;		/* ... and held long enough to count as a long press */
  	struct wl_event_source *hwkey_timer;
@@ -13,7 +41,7 @@ index 0e0a776..af44f15 100644
  
  	/* on-screen keyboard */
  	struct wlr_keyboard vkbd;
-@@ -948,6 +952,7 @@ static void auth_input(struct zt_server *, uint32_t, const char *);
+@@ -948,6 +957,7 @@ static void auth_input(struct zt_server *, uint32_t, const char *);
  static void auth_submit(struct zt_server *);
  static void auth_finish(struct zt_server *);
  static void draw_dialog(struct zt_server *);
@@ -21,7 +49,66 @@ index 0e0a776..af44f15 100644
  static void ftrace_mark(struct zt_server *server, const char *what, double ms);
  static double ftrace_clock(void);
  static void run_detached(const char *, const char *, const char *, const char *);
-@@ -5120,7 +5125,7 @@ static int read_battery(void) {
+@@ -1672,7 +1682,7 @@ static void draw_loading(struct zt_server *server) {
+ 		wlr_log(WLR_INFO, "loading screen up, %u ms after the launch", since);
+ 	}
+ 	float alpha = fminf(1.0f, (float)(since - gone) / 150.0f);
+-	float mid = STATUS_H + (server->height - STATUS_H - NAV_H) / 2.0f;
++	float mid = STATUS_H + (server->height - STATUS_H - NAV_SPACE(server)) / 2.0f;
+ 	if (server->android_compiling) {
+         prepare_compiling(server);
+         layer_draw(server, &server->compiling_text, 20, mid - 45, alpha);
+@@ -3032,8 +3042,22 @@ static void load_config(struct zt_server *server) {
+ 		} else if (strcmp(key, "nav_bar") == 0) {
+ 			if (strcmp(value, "on") == 0) {
+ 				nav_h = NAV_BAR_H;
++				server->nav_autohide = false;
++				server->nav_slide = 1.0f;
+ 			} else if (strcmp(value, "off") == 0) {
+ 				nav_h = 0;
++				server->nav_autohide = false;
++				server->nav_slide = 0.0f;
++			} else if (strcmp(value, "autohide") == 0 || strcmp(value, "auto") == 0) {
++				nav_h = NAV_BAR_H;
++				server->nav_autohide = true;
++				server->nav_slide = 0.0f;
++			}
++		} else if (strcmp(key, "nav_autohide") == 0) {
++			server->nav_autohide = (strcmp(value, "on") == 0 || strcmp(value, "1") == 0 || strcmp(value, "true") == 0);
++			if (server->nav_autohide) {
++				nav_h = NAV_BAR_H;
++				server->nav_slide = 0.0f;
+ 			}
+ 		} else if (strcmp(key, "nav_center_icon") == 0) {
+ 			int n = atoi(value);
+@@ -3332,7 +3356,7 @@ static void place_tiles(struct zt_server *server) {
+ 		}
+ 	}
+ 	free(taken);
+-	double visible = server->height - STATUS_H - NAV_H;
++	double visible = server->height - STATUS_H - NAV_SPACE(server);
+ 	/* under the last row, on the right: the arrow into the app list */
+ 	server->arrow_y = TOP_PAD + rows * (unit + gutter) + 10;
+ 	server->start_h = server->arrow_y + ROUND + 24;
+@@ -4875,7 +4899,7 @@ static bool list_prepare(struct zt_server *server) {
+ 	if (!server->n_items || server->width <= 0) {
+ 		return false;
+ 	}
+-	double visible = server->height - STATUS_H - NAV_H;
++	double visible = server->height - STATUS_H - NAV_SPACE(server);
+ 	double top = server->list_scroll, bottom = top + visible;
+ 	bool in_sight = server->page > 0.001f, more = false;
+ 	int built = 0, n_drop = 0;
+@@ -4910,7 +4934,7 @@ static bool list_prepare(struct zt_server *server) {
+ }
+ 
+ static double scroll_max(struct zt_server *server, bool list) {
+-	double visible = server->height - STATUS_H - NAV_H;
++	double visible = server->height - STATUS_H - NAV_SPACE(server);
+ 	if (list && server->searching && server->osk_visible) {
+ 		visible -= server->osk_h;	/* the keyboard is over the bottom of what was found */
+ 	}
+@@ -5120,7 +5144,7 @@ static int read_battery(void) {
  		if (capacity >= 0) return capacity;
  	}
  #endif
@@ -30,7 +117,52 @@ index 0e0a776..af44f15 100644
  	for (int i = 0; names[i]; i++) {
  		char path[128];
  		int capacity = -1;
-@@ -7571,7 +7576,11 @@ static pid_t *started_pid(struct zt_server *server, const char *command) {
+@@ -7026,7 +7050,7 @@ static void draw_keypop(struct zt_server *server) {
+ 			double x = key->x + key->w / 2 - w / 2;
+ 			x = x < 0 ? 0 : x > server->width - w ? server->width - w : x;
+ 			server->keypop_x = (float)x;
+-			server->keypop_y = (float)(server->height - NAV_H - server->osk_h + key->y - h);
++			server->keypop_y = (float)(server->height - NAV_SPACE(server) - server->osk_h + key->y - h);
+ 			server->keypop = true;
+ 		}
+ 	}
+@@ -7151,7 +7175,7 @@ static bool is_terminal(struct zt_toplevel *toplevel);
+ static double app_height(struct zt_server *server) {
+ 	bool make_room = server->osk_visible && server->shown &&
+ 		(is_terminal(server->shown) || server->shown->android_runtime);
+-	return server->height - STATUS_H - NAV_H - (make_room ? server->osk_h : 0);
++	return server->height - STATUS_H - NAV_SPACE(server) - (make_room ? server->osk_h : 0);
+ }
+ 
+ /* How far the app goes up while the keyboard is over it: enough for the box
+@@ -7162,7 +7186,7 @@ static void osk_lift(struct zt_server *server) {
+ 	float lift = 0;
+ 	if (server->osk_visible && server->shown && !is_terminal(server->shown) &&
+ 			!server->shown->android_runtime && server->osk_box_bottom >= 0) {
+-		double keyboard_top = server->height - NAV_H - server->osk_h;
++		double keyboard_top = server->height - NAV_SPACE(server) - server->osk_h;
+ 		double box = STATUS_H + server->osk_box_bottom + 10;
+ 		lift = box > keyboard_top ? (float)(box - keyboard_top) : 0;
+ 		if (lift > server->osk_h) {
+@@ -7183,7 +7207,7 @@ static double app_fit(struct zt_server *server, struct zt_toplevel *toplevel) {
+  * much to reach the bottom. */
+ static void app_configure(struct zt_server *server, struct zt_toplevel *toplevel) {
+ 	double room = toplevel == server->shown ? app_height(server) :
+-		server->height - STATUS_H - NAV_H;
++		server->height - STATUS_H - NAV_SPACE(server);
+ 	int h = (int)(room / app_fit(server, toplevel));
+ 	if (h != toplevel->sent_h && toplevel->xdg_toplevel->base->initialized) {
+ 		toplevel->sent_h = h;
+@@ -7291,7 +7315,7 @@ static bool background_app(struct zt_toplevel *toplevel) {
+  * screen, so that with few tiles nothing waits for rows that are not there. */
+ static float start_rows(struct zt_server *server) {
+ 	float pitch = 2.0f * (float)server->width / (float)(server->units > 0 ? server->units : 6);
+-	double visible = server->height - STATUS_H - NAV_H, top = 1e9, bottom = -1e9;
++	double visible = server->height - STATUS_H - NAV_SPACE(server), top = 1e9, bottom = -1e9;
+ 	if (server->page > 0.5f) {
+ 		for (int i = 0; i < server->n_items; i++) {
+ 			struct app_item *it = &server->items[i];
+@@ -7571,7 +7595,11 @@ static pid_t *started_pid(struct zt_server *server, const char *command) {
   * buffers in CMA, and after a few restarts the new shell cannot allocate one
   * and the screen stays blank. */
  static void close_inherited(void) {
@@ -43,7 +175,76 @@ index 0e0a776..af44f15 100644
  }
  
  static void launch(struct zt_server *server, const char *command) {
-@@ -9695,6 +9704,10 @@ static void nav_activate(struct zt_server *server, int index) {
+@@ -7862,7 +7890,7 @@ static void switcher_forget(struct zt_server *server, struct zt_toplevel *toplev
+ /* Where card i is, with the switcher at t: the app area shrunk about its
+  * middle, and a card's width and a gap between one and the next. */
+ static void card_place(struct zt_server *server, int i, float t, float *x, float *y, float *scale) {
+-	float w = server->width, h = server->height - STATUS_H - NAV_H;
++	float w = server->width, h = server->height - STATUS_H - NAV_SPACE(server);
+ 	float sc = 1.0f + (CARD_SCALE - 1.0f) * t;
+ 	float pitch = w * sc + CARD_GAP;
+ 	*scale = sc;
+@@ -7875,7 +7903,7 @@ static int card_at(struct zt_server *server, double px, double py) {
+ 		float x, y, sc;
+ 		card_place(server, i, 1.0f, &x, &y, &sc);
+ 		if (px >= x && px < x + sc * server->width &&
+-				py >= y && py < y + sc * (server->height - STATUS_H - NAV_H)) {
++				py >= y && py < y + sc * (server->height - STATUS_H - NAV_SPACE(server))) {
+ 			return i;
+ 		}
+ 	}
+@@ -8391,7 +8419,7 @@ static void hyper_row(struct zt_server *server, cairo_t *cr, struct hyper_hit *h
+ 
+ /* The whole of it, from under the status bar to the nav bar. */
+ static void draw_hyper(struct zt_server *server) {
+-	double w = server->width, h = server->height - STATUS_H - NAV_H;
++	double w = server->width, h = server->height - STATUS_H - NAV_SPACE(server);
+ 	cairo_t *cr;
+ 	struct zt_buffer *buffer = zt_buffer_create(server, w, h, &cr);
+ 	cairo_set_source_rgb(cr, 0, 0, 0);
+@@ -8867,7 +8895,7 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
+ 	if (toplevel->xdg_toplevel->base->initial_commit) {
+ 		/* Every app gets the whole app area, and is told it is maximised so
+ 		 * it draws no shadows or resize borders. */
+-		toplevel->sent_h = server->height - STATUS_H - NAV_H;
++		toplevel->sent_h = server->height - STATUS_H - NAV_SPACE(server);
+ 		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, server->width, toplevel->sent_h);
+ 		wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, true);
+ 		wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel,
+@@ -9175,7 +9203,7 @@ static double next_key_weight(const char *prefix, char next) {
+ }
+ 
+ static int key_at(struct zt_server *server, double x, double y) {
+-    y -= server->height - NAV_H - server->osk_h;
++    y -= server->height - NAV_SPACE(server) - server->osk_h;
+     if (x < 0 || x >= server->width || y < 0 || y >= server->osk_h) return -1;
+     int nearest = -1;
+     double best = 1e9;
+@@ -9617,7 +9645,7 @@ static void pin_item(struct zt_server *server, int index) {
+ 	}
+ 	if (at >= 0) {
+ 		struct tile *t = &server->tiles[at];
+-		double visible = server->height - STATUS_H - NAV_H, max = scroll_max(server, false);
++		double visible = server->height - STATUS_H - NAV_SPACE(server), max = scroll_max(server, false);
+ 		double to = t->y + t->h + 24 - visible;
+ 		server->scroll = to < 0 ? 0 : to > max ? max : to;
+ 		server->scroll_v = 0;
+@@ -9666,6 +9694,14 @@ static int press_fired(void *data) {
+ 	return 0;
+ }
+ 
++static int nav_hide_timer_fired(void *data) {
++	struct zt_server *server = data;
++	if (server->nav_autohide && server->nav_slide > 0.001f) {
++		animate(server, &server->nav_slide, 0.0f, 250, 0, false);
++	}
++	return 0;
++}
++
+ /* A nav button, or the phone's own key for it, pressed and let go. */
+ static void nav_activate(struct zt_server *server, int index) {
+ 	if (server->switcher) {
+@@ -9695,6 +9731,10 @@ static void nav_activate(struct zt_server *server, int index) {
  		}
  	} else if (index == NAV_BACK) {
  		wlr_log(WLR_INFO, "nav: back");
@@ -54,7 +255,7 @@ index 0e0a776..af44f15 100644
  		if (server->shade_open || server->shade_h > 10.0f) {
  			shade_set_open(server, false);
  			return;
-@@ -10194,6 +10207,10 @@ static void dialog_handle_action(struct zt_server *server, const char *act) {
+@@ -10194,6 +10234,10 @@ static void dialog_handle_action(struct zt_server *server, const char *act) {
  			"sudo -n systemctl stop zrn-sensorhub.service ztoscsf-sensorhub.service zrnsensord.service ztoscsf-sensord.service 2>/dev/null",
  			NULL);
  		note_add(server, "ztOSCoreSensorFramework", "Sensor Hub Stopped", "Sensor hub has been stopped for this boot.");
@@ -65,7 +266,7 @@ index 0e0a776..af44f15 100644
  	} else if (act[0] == '/' || strchr(act, ' ')) {
  		run_detached("/bin/sh", "-c", act, NULL);
  	}
-@@ -10201,6 +10218,7 @@ static void dialog_handle_action(struct zt_server *server, const char *act) {
+@@ -10201,6 +10245,7 @@ static void dialog_handle_action(struct zt_server *server, const char *act) {
  
  static void dialog_show(struct zt_server *server, const char *title, const char *text,
  		const char *btn1, const char *act1, const char *btn2, const char *act2) {
@@ -73,7 +274,151 @@ index 0e0a776..af44f15 100644
      if (server->auth_active && (!act1 || strcmp(act1, "auth_submit"))) return;
  	snprintf(server->dialog_title, sizeof(server->dialog_title), "%s", title ? title : "Dialog");
  	snprintf(server->dialog_text, sizeof(server->dialog_text), "%s", text ? text : "");
-@@ -12485,6 +12503,22 @@ static int hwkey_nav(uint32_t keycode) {
+@@ -10346,6 +10391,12 @@ static void tone_rgb(int kelvin, float rgb[3]) {
+ static void screen_set(struct zt_server *server, bool on) {
+ 	if (!on) {
+ 		server->dm_hidden = 1;	/* the DotMatrix home boots again when it is next seen */
++		if (server->nav_autohide) {
++			server->nav_slide = 0.0f;
++			if (server->nav_hide_timer) {
++				wl_event_source_timer_update(server->nav_hide_timer, 0);
++			}
++		}
+ 	}
+ 	if (!server->output || server->screen_on == on) {
+ 		return;
+@@ -10927,7 +10978,7 @@ static void touch_begin(struct zt_server *server, int32_t id, double x, double y
+ 		return;	/* asleep: the glass does nothing until the power key */
+ 	}
+     if (!server->locked && server->android_compiling && server->pending_pid > 0 && !server->shown) {
+-        float mid = STATUS_H + (server->height - STATUS_H - NAV_H) / 2.0f;
++        float mid = STATUS_H + (server->height - STATUS_H - NAV_SPACE(server)) / 2.0f;
+         if (x >= 20 && x <= 140 && y >= mid + 55 && y <= mid + 99) {
+             pid_t job = server->pending_pid;
+             /* Shell launches have a dedicated session/process group. */
+@@ -11173,24 +11224,50 @@ static void touch_begin(struct zt_server *server, int32_t id, double x, double y
+ 		return;
+ 	}
+ 
+-	if (y >= server->height - NAV_H) {
+-		p->role = ROLE_NAV;
+-		p->index = (int)(x / (server->width / 3.0));
+-		if (p->index > NAV_SEARCH) {
+-			p->index = NAV_SEARCH;
++	if (!server->nav_autohide) {
++		if (y >= server->height - NAV_H) {
++			p->role = ROLE_NAV;
++			p->index = (int)(x / (server->width / 3.0));
++			if (p->index > NAV_SEARCH) {
++				p->index = NAV_SEARCH;
++			}
++			server->nav_pressed = p->index;
++			draw_nav(server);
++			hap(server, HAP_TAP, HG_NAV);
++			wl_event_source_timer_update(server->long_press_timer, LONG_PRESS_MS);
++			return;
++		}
++	} else {
++		if (server->nav_slide > 0.5f && y >= server->height - NAV_BAR_H * server->nav_slide) {
++			p->role = ROLE_NAV;
++			p->index = (int)(x / (server->width / 3.0));
++			if (p->index > NAV_SEARCH) {
++				p->index = NAV_SEARCH;
++			}
++			server->nav_pressed = p->index;
++			draw_nav(server);
++			hap(server, HAP_TAP, HG_NAV);
++			wl_event_source_timer_update(server->long_press_timer, LONG_PRESS_MS);
++			wl_event_source_timer_update(server->nav_hide_timer, 3500);
++			return;
++		} else if (!server->osk_visible && y >= server->height - 24) {
++			p->role = ROLE_NAV_REVEAL;
++			p->down_ms = now_ms();
++			p->lx = x;
++			p->ly = y;
++			return;
++		} else if (server->nav_slide > 0.1f) {
++			/* Tapping above the visible nav bar dismisses it */
++			animate(server, &server->nav_slide, 0.0f, 200, 0, false);
++			wl_event_source_timer_update(server->nav_hide_timer, 0);
+ 		}
+-		server->nav_pressed = p->index;
+-		draw_nav(server);
+-		hap(server, HAP_TAP, HG_NAV);
+-		wl_event_source_timer_update(server->long_press_timer, LONG_PRESS_MS);
+-		return;
+ 	}
+-	if (server->osk_visible && y >= server->height - NAV_H - server->osk_h) {
++	if (server->osk_visible && y >= server->height - NAV_SPACE(server) - server->osk_h) {
+         if (server->osk_cursor_touch) {
+             p->role = ROLE_NONE;
+             return;
+         }
+-        double dot_y = server->height - NAV_H - server->osk_h + osk_dot_y(server);
++        double dot_y = server->height - NAV_SPACE(server) - server->osk_h + osk_dot_y(server);
+         if (!server->auth_active && hypot(x - osk_dot_x(server), y - dot_y) <= 14) {
+             /* Existing key contacts must not commit when trackpad mode starts. */
+             for (int i = 0; i < MAX_TOUCH; i++)
+@@ -11360,6 +11437,25 @@ static void touch_update(struct zt_server *server, int32_t id, double x, double
+ 		p->moved = true;
+ 	}
+ 	switch (p->role) {
++	case ROLE_NAV_REVEAL:
++		if (p->y0 - y > 12) {
++			animate(server, &server->nav_slide, 1.0f, 200, 0, false);
++			wl_event_source_timer_update(server->nav_hide_timer, 3500);
++			hap(server, HAP_TAP, HG_NAV);
++			p->role = ROLE_NONE;
++		}
++		break;
++	case ROLE_NAV:
++		if (server->nav_autohide && y - p->y0 > 12) {
++			server->nav_pressed = -1;
++			draw_nav(server);
++			animate(server, &server->nav_slide, 0.0f, 180, 0, false);
++			wl_event_source_timer_update(server->nav_hide_timer, 0);
++			wl_event_source_timer_update(server->long_press_timer, 0);
++			hap(server, HAP_TAP, HG_NAV);
++			p->role = ROLE_NONE;
++		}
++		break;
+ 	case ROLE_RETRO:
+ 		if (server->dm) {
+ 			/* three fingers pushed up together: the launcher's settings */
+@@ -11556,7 +11652,7 @@ static void touch_update(struct zt_server *server, int32_t id, double x, double
+ 		break;
+ 	case ROLE_HYPER:
+ 		if (p->moved && server->hyper) {
+-			double bottom = server->osk_visible ? server->height - NAV_H - server->osk_h : server->height - NAV_H;
++			double bottom = server->osk_visible ? server->height - NAV_SPACE(server) - server->osk_h : server->height - NAV_H;
+ 			double room = bottom - STATUS_H - HYPER_LIST_Y;
+ 			double max = fmax(0, server->hyper_content_h - room);
+ 			double to = server->hyper_scroll0 - (y - p->y0);
+@@ -11617,6 +11713,13 @@ static void touch_end(struct zt_server *server, int32_t id, uint32_t time, bool
+ 		return;
+ 	}
+ 	switch (p->role) {
++	case ROLE_NAV_REVEAL:
++		if (!cancelled && !p->moved) {
++			animate(server, &server->nav_slide, 1.0f, 200, 0, false);
++			wl_event_source_timer_update(server->nav_hide_timer, 3500);
++			hap(server, HAP_TAP, HG_NAV);
++		}
++		break;
+ 	case ROLE_RETRO:
+ 		if (server->dm) {
+ 			dm_launcher_touch(server->dm, cancelled ? DM_TOUCH_CANCEL : DM_TOUCH_UP,
+@@ -11896,6 +11999,9 @@ static void touch_end(struct zt_server *server, int32_t id, uint32_t time, bool
+ 			break;
+ 		}
+ 		nav_activate(server, p->index);
++		if (server->nav_autohide) {
++			wl_event_source_timer_update(server->nav_hide_timer, 400);
++		}
+ 		break;
+ 	case ROLE_HYPER:
+ 		if (!cancelled && !p->moved) {
+@@ -12485,6 +12591,22 @@ static int hwkey_nav(uint32_t keycode) {
  	return -1;
  }
  
@@ -96,7 +441,7 @@ index 0e0a776..af44f15 100644
  static int hwkey_held_fired(void *data) {
  	struct zt_server *server = data;
  	if (server->hwkey_held >= 0 && !server->hwkey_long) {
-@@ -12543,12 +12577,32 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
+@@ -12543,12 +12665,32 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
  	struct zt_server *server = keyboard->server;
  	struct wlr_keyboard_key_event *event = data;
  	if (event->keycode == KEY_POWER) {
@@ -115,7 +460,7 @@ index 0e0a776..af44f15 100644
  				activity(server);
 +			} else {
 +				server->power_woke_screen = false;
-+			}
+ 			}
 +			wl_event_source_timer_update(server->power_key_timer, 850);
 +		} else {
 +			wl_event_source_timer_update(server->power_key_timer, 0);
@@ -125,14 +470,14 @@ index 0e0a776..af44f15 100644
 +				} else if (!server->power_woke_screen) {
 +					screen_set(server, false);
 +				}
- 			}
++			}
 +			server->power_key_held = false;
 +			server->power_key_long = false;
 +			server->power_woke_screen = false;
  		}
  		return;
  	}
-@@ -12601,6 +12655,20 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
+@@ -12601,6 +12743,20 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
  		}
  		return;
  	}
@@ -153,11 +498,87 @@ index 0e0a776..af44f15 100644
  	if (event->keycode == KEY_VOLUMEUP || event->keycode == KEY_VOLUMEDOWN) {
  		/* DemoLoop owns volume down; three presses stop it, touches never do. */
  		if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-@@ -14541,6 +14609,7 @@ int main(int argc, char *argv[]) {
+@@ -12906,7 +13062,7 @@ static void board_frame(struct zt_server *server) {
+ 	double scrim = out ? ZB_SCRIM * (1 - ms / run) : ZB_SCRIM * fmin(1, ms / ZB_SCRIM_IN_MS);
+ 	mat_identity(m);
+ 	mat_translate(m, 0, STATUS_H);
+-	mat_scale(m, server->width, server->height - STATUS_H - NAV_H);
++	mat_scale(m, server->width, server->height - STATUS_H - NAV_SPACE(server));
+ 	quad(server, GL_TEXTURE_2D, server->black_tex, m, (float)scrim, false, false, 1.0f, 1.0f);
+ 	struct zt_layer *l = &server->board_layer;
+ 	double side = board_side(server), pitch = side + ZB_GAP;
+@@ -13289,7 +13445,7 @@ static void render_frame(struct zt_server *server) {
+ 			shade_folded = true;
+ 		}
+ 	}
+-	int under_bottom = server->sensorhub_fail_screen ? output->height :
++	int under_bottom = (server->sensorhub_fail_screen || server->nav_autohide) ? output->height :
+ 		output->height - (int)floorf(NAV_H * server->scale);
+ 	/* the lock screen nearly down: only the nav bar's strip, which covers
+ 	 * the rest, is left. An empty scissor (height below zero) was a GL
+@@ -13505,7 +13661,7 @@ static void render_frame(struct zt_server *server) {
+ 			/* the search button, fixed at the top of the app list (absolute, not scrollable);
+ 			 * or, searching, the box with what has been typed, which stays */
+ 			{
+-				float search_rows_up = (float)((server->height - STATUS_H - NAV_H) / turn_pitch(server));
++				float search_rows_up = (float)((server->height - STATUS_H - NAV_SPACE(server)) / turn_pitch(server));
+ 				float turn = turn_at(server, search_rows_up, 0.5f, true, false, false, 0, 0);
+ 				float m[16];
+ 				struct zt_layer *l = server->searching ? &server->search_layer : &server->round_search;
+@@ -13529,7 +13685,7 @@ static void render_frame(struct zt_server *server) {
+ 				float m[16], t = server->menu_t, y = menu_top(server);
+ 				mat_identity(m);
+ 				mat_translate(m, 0, STATUS_H);
+-				mat_scale(m, server->width, server->height - STATUS_H - NAV_H);
++				mat_scale(m, server->width, server->height - STATUS_H - NAV_SPACE(server));
+ 				quad(server, GL_TEXTURE_2D, server->black_tex, m, 0.5f * t, false, false, 1.0f, 1.0f);
+ 				mat_identity(m);
+ 				mat_translate(m, 0, y + menu_h(server) / 2.0f * (1.0f - t));
+@@ -13570,7 +13726,7 @@ static void render_frame(struct zt_server *server) {
+ 			wlr_xdg_surface_for_each_surface(card->xdg_toplevel->base, draw_app_surface, &d);
+ 			if (server->card_title[i].tex) {
+ 				layer_draw(server, &server->card_title[i], d.x,
+-					d.y + d.scale * (server->height - STATUS_H - NAV_H) + 8, t * d.alpha);
++					d.y + d.scale * (server->height - STATUS_H - NAV_SPACE(server)) + 8, t * d.alpha);
+ 			}
+ 		}
+ 	} else if (app && app->mapped && !dm_lock) {
+@@ -13596,7 +13752,7 @@ static void render_frame(struct zt_server *server) {
+ 	}
+ 	if (server->osk_slide > 0.003f && server->osk_layer.tex) {
+ 		layer_draw(server, &server->osk_layer, 0,
+-			(float)(server->height - NAV_H - server->osk_h * server->osk_slide), 1.0f);
++			(float)(server->height - NAV_SPACE(server) - server->osk_h * server->osk_slide), 1.0f);
+ 	}
+ 	boot_logo_draw(server, now);
+ 	bool retro_home = (retro_home_shown(server) && !lock_shown) ||
+@@ -13709,7 +13865,10 @@ static void render_frame(struct zt_server *server) {
+ 	}
+ 	/* the nav bar stays on top: the panel comes down behind it */
+ 	if (!server->sensorhub_fail_screen && !(retro_on(server) && server->locked)) {
+-		layer_draw(server, &server->nav_layer, 0, server->height - NAV_H, 1.0f);
++		float slide = server->nav_autohide ? server->nav_slide : 1.0f;
++		if (slide > 0.001f) {
++			layer_draw(server, &server->nav_layer, 0, (float)server->height - (float)NAV_BAR_H * slide, 1.0f);
++		}
+ 	}
+ 	if (server->keypop && server->osk_visible && server->keypop_layer.tex) {
+ 		layer_draw(server, &server->keypop_layer, server->keypop_x, server->keypop_y, 1.0f);
+@@ -14371,6 +14530,8 @@ int main(int argc, char *argv[]) {
+ 
+ 	struct zt_server server = {0};
+ 	server.nav_pressed = -1;
++	server.nav_autohide = false;
++	server.nav_slide = 1.0f;
+ 	server.hwkey_held = -1;
+ 	if (hardware_nav_keys()) {
+ 		nav_h = 0;	/* until the config says otherwise */
+@@ -14541,6 +14702,8 @@ int main(int argc, char *argv[]) {
  
  	server.long_press_timer = wl_event_loop_add_timer(server.loop, long_press_fired, &server);
  	server.hwkey_timer = wl_event_loop_add_timer(server.loop, hwkey_held_fired, &server);
 +	server.power_key_timer = wl_event_loop_add_timer(server.loop, power_key_held_fired, &server);
++	server.nav_hide_timer = wl_event_loop_add_timer(server.loop, nav_hide_timer_fired, &server);
  	server.press_timer = wl_event_loop_add_timer(server.loop, press_fired, &server);
  	server.key_repeat_timer = wl_event_loop_add_timer(server.loop, key_repeat_fired, &server);
  	server.repeat_index = -1;

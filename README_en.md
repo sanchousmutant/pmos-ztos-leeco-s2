@@ -225,6 +225,9 @@ The application [`zrn-sdk/examples/launcher/main.c`](https://github.com/Zerone-L
   - Helper utility [`scripts/set-wallpaper`](scripts/set-wallpaper) applies wallpapers on the fly without restarting the shell: `set-wallpaper <path_to_image>`. When called without arguments, it automatically finds and applies the most recent downloaded image in `~/Downloads`.
   - Installed official `postmarketos-artwork-wallpapers` package, user wallpaper repository: `~/Pictures/Wallpapers/`.
   - Full configuration stored in [`configs/ztmetro/config`](configs/ztmetro/config) and [`configs/ztmetro/tiles`](configs/ztmetro/tiles).
+- **Navigation Bar Auto-hide (ztMETRO Navigation Bar Autohide):**
+  - Native auto-hiding navigation bar mode (`nav_bar = autohide`) freeing the entire display height for running apps (YouTube, Instagram, browser) and Start/Lock screen wallpapers.
+  - **Gesture Controls:** swipe up from the bottom screen edge (or tap the bottom bezel) smoothly reveals the navigation bar with Back, Start, and Search; swipe down on the bar immediately dismisses it; after 3.5 seconds of inactivity (or upon tapping a navigation action) the bar smoothly slides away automatically.
   - **Process Supervision:** child processes detached using `setsid()`, leaked file descriptors closed (`fd >= 3`), zombies reaped via `signal(SIGCHLD, SIG_IGN)`. Focus instantly reverts to `zrn-launcher` on browser exit.
 
 ---
