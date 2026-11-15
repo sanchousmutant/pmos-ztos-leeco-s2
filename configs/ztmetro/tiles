@@ -1,0 +1,10 @@
+# ztMETRO Start: size | colour | label | icon | command
+medium | accent | Terminal | terminal | foot
+medium | accent | Settings | gear | ztsettings
+wide | steel | ZrnDevTest | code | zrndevtest
+medium | teal | Angelfish | globe | /usr/local/bin/launch-angelfish
+medium | orange | Decibels | music | /usr/local/bin/launch-decibels
+medium | accent | Chromium | browser | /usr/local/bin/launch-chromium
+medium | accent | Files | folder | ztfiles
+medium | cyan | Devices | @ztdevices | ztdevices
+medium | red | YouTube | @chrome-agimnkijcaahngcdmfeangaknmldooml-Default.png | /usr/local/bin/launch-youtube
