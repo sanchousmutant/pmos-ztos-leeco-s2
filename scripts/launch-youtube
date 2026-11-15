@@ -43,6 +43,7 @@ fi
 
 APP_URL="https://m.youtube.com"
 UBLOCK_DIR="/home/pmos/.config/chromium-extensions/uBlock0.chromium"
+SCALE="${SCALE:-1.5}"
 
 EXT_FLAG=""
 if [ -d "$UBLOCK_DIR" ]; then
@@ -66,7 +67,7 @@ CHROMIUM_CMD="chromium \
     --enable-virtual-keyboard \
     --touch-events=enabled \
     --start-maximized \
-    --force-device-scale-factor=2.0 \
+    --force-device-scale-factor=$SCALE \
     --no-sandbox \
     --no-first-run \
     --no-default-browser-check \
