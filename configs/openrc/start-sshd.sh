@@ -361,6 +361,9 @@ restart_adsp() {
 # Keep the link address and Wi-Fi subsystem alive - but never call fb0/blank
 # again: a repeated unblank desynchronises the DSI PLL and drops the SoC into
 # Qualcomm CrashDump (900E).
+if [ -x /usr/local/bin/phone-watchdog.sh ]; then
+	/usr/local/bin/phone-watchdog.sh >/var/log/phone-watchdog.log 2>&1 &
+else
 (
 	asm_err=$(asm_errors)
 	last_adsp=$(cut -d. -f1 /proc/uptime)
@@ -425,5 +428,6 @@ restart_adsp() {
 		sleep 30
 	done
 ) &
+fi
 echo "keep-alive watchdog started in background"
 sync
