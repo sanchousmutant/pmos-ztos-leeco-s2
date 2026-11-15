@@ -43,7 +43,7 @@ fi
 
 APP_URL="https://m.youtube.com"
 UBLOCK_DIR="/home/pmos/.config/chromium-extensions/uBlock0.chromium"
-SCALE="${SCALE:-1.5}"
+SCALE="${SCALE:-0.5}"
 
 EXT_FLAG=""
 if [ -d "$UBLOCK_DIR" ]; then
