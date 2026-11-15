@@ -133,6 +133,10 @@ done
 chgrp -R wheel /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null || true
 chmod -R 664 /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null || true
 
+# Avoid Transparent Hugepage compaction stalls on 3GB RAM (eliminates UI micro-stutters)
+echo madvise > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
+echo madvise > /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || true
+
 # Thermal trip points: adjust conservative 75C shutdown to realistic 95C
 for z in /sys/class/thermal/thermal_zone*; do
 	for t in $z/trip_point_*_type; do
@@ -364,11 +368,11 @@ restart_adsp() {
 	loops=0
 	while true; do
 		loops=$((loops + 1))
-		# Every ~60 s: heal the audio graph.
+		# Every ~60 s (2 x 30 s): heal the audio graph.
 		#  * new q6asm prepare failures = wedged ASM -> restart ADSP, and the
 		#    card profile bounce that recreates pro-output-0;
 		#  * applications silently playing into "Dummy Output" -> bounce.
-		if [ $((loops % 12)) -eq 0 ]; then
+		if [ $((loops % 2)) -eq 0 ]; then
 			cur=$(asm_errors)
 			if [ "$cur" -lt "$asm_err" ]; then
 				asm_err=$cur   # dmesg ring rotated
@@ -418,13 +422,7 @@ restart_adsp() {
 				fi
 			fi
 		fi
-		# The MI2S route is lost if ADSP crashes and is restarted.
-		if [ -e /proc/asound/card0 ]; then
-			amixer -c 0 sset \
-				'QUIN_MI2S_RX Audio Mixer MultiMedia1' on \
-				>/dev/null 2>&1 || true
-		fi
-		sleep 5
+		sleep 30
 	done
 ) &
 echo "keep-alive watchdog started in background"

@@ -22,4 +22,9 @@ echo $((size_mb * 1024 * 1024)) > /sys/block/zram0/disksize || exit 1
 mkswap "$DEV" >/dev/null 2>&1 || exit 1
 swapon -p 100 "$DEV" || exit 1
 
+# Aggressive zram offloading (zram is fast compressed RAM — use it eagerly)
+echo 180 > /proc/sys/vm/swappiness 2>/dev/null || true
+echo 0 > /proc/sys/vm/page-cluster 2>/dev/null || true
+echo 0 > /proc/sys/vm/watermark_boost_factor 2>/dev/null || true
+
 echo "zram: ${size_mb} MiB active on $DEV"

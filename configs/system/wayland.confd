@@ -8,6 +8,9 @@ CAGE_APP="/usr/local/bin/zrn-session"
 # Display scale (DPI): 2.0 recommended for 1080x1920 5.5" screen (540x960 logical)
 SCALE="2.0"
 
+# Hardware cursor rendering (0 = hardware overlay GPU, 1 = software fallback CPU)
+WLR_NO_HARDWARE_CURSORS="0"
+
 # User and session info
 WAYLAND_USER="pmos"
 WAYLAND_UID=1000
