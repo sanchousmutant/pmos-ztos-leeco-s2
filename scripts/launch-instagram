@@ -44,7 +44,7 @@ fi
 APP_URL="https://www.instagram.com"
 UBLOCK_DIR="/home/pmos/.config/chromium-extensions/uBlock0.chromium"
 # Isolate scale from compositor's SCALE=2.0
-INSTA_SCALE="${INSTA_SCALE:-1.5}"
+INSTA_SCALE="${INSTA_SCALE:-1.0}"
 
 EXT_FLAG=""
 if [ -d "$UBLOCK_DIR" ]; then
