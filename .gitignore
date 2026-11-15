@@ -51,6 +51,8 @@ id_rsa.*
 /test_sound.txt
 /*.log
 /wayland.err
+/tests/*.wav
+/tests/*.png
 
 # Temporary and editor files
 .vscode/

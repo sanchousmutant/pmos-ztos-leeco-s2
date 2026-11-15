@@ -4,6 +4,7 @@
 export XDG_RUNTIME_DIR=/run/user/1000
 export WAYLAND_DISPLAY=wayland-0
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+export PULSE_SERVER="unix:/run/user/1000/pulse/native"
 
 # Ensure session dbus is running
 if [ ! -S /run/user/1000/bus ]; then
@@ -21,7 +22,7 @@ if ! pidof pipewire >/dev/null 2>&1; then
     else
         pipewire &
     fi
-    sleep 0.1
+    sleep 0.2
 fi
 if ! pidof wireplumber >/dev/null 2>&1; then
     if [ "$(id -u)" -eq 0 ]; then
@@ -29,7 +30,7 @@ if ! pidof wireplumber >/dev/null 2>&1; then
     else
         wireplumber &
     fi
-    sleep 0.1
+    sleep 0.2
 fi
 if ! pidof pipewire-pulse >/dev/null 2>&1; then
     if [ "$(id -u)" -eq 0 ]; then
@@ -37,15 +38,11 @@ if ! pidof pipewire-pulse >/dev/null 2>&1; then
     else
         pipewire-pulse &
     fi
-    sleep 0.1
+    sleep 0.2
 fi
 
 URL="${1:-https://m.youtube.com}"
 
-# Chromium hardware acceleration & performance flags:
-# - ignore-gpu-blocklist + enable-gpu-rasterization + enable-zero-copy: activates Adreno 510 GPU
-# - disable-vulkan: prevents crash trying to init missing Vulkan on wayland
-# - mobile user-agent: loads lightweight YouTube mobile player (smooth H.264 streams instead of heavy VP9/AV1)
 CHROMIUM_CMD="chromium \
     --enable-features=UseOzonePlatform \
     --ozone-platform=wayland \
@@ -69,7 +66,7 @@ CHROMIUM_CMD="chromium \
     \"$URL\""
 
 if [ "$(id -u)" -eq 0 ]; then
-    exec doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 DBUS_SESSION_BUS_ADDRESS=\"$DBUS_SESSION_BUS_ADDRESS\" $CHROMIUM_CMD"
+    exec doas -u pmos sh -c "XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 DBUS_SESSION_BUS_ADDRESS=\"$DBUS_SESSION_BUS_ADDRESS\" PULSE_SERVER=\"$PULSE_SERVER\" $CHROMIUM_CMD"
 else
     exec sh -c "$CHROMIUM_CMD"
 fi

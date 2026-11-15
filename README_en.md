@@ -112,12 +112,12 @@ Port the LeEco Le 2 smartphone from its legacy vendor Android 3.10 kernel to mod
 - **DRM/KMS:** enabled `CONFIG_DRM_MSM=y`, `CONFIG_DRM_MSM_MDP5=y`, `CONFIG_DRM_MSM_DSI=y`, `CONFIG_DRM_MSM_DSI_28NM_PHY=y`, built-in panel driver `panel-leeco-s2-boe-nt35596s.c`. Device `/dev/dri/card0` active, `card0-DSI-1/status = connected`.
 - **GPU Adreno 510:** nodes `&adreno_gpu` and `&gpu_iommu` enabled in Device Tree [`msm8976-leeco-s2.dts`](kernel/msm8976-leeco-s2.dts). Firmware blobs `a530_pm4.fw` and `a530_pfp.fw` installed. 96 MB CMA pool assigned (`cma=96M` in cmdline). Wayland and applications render via hardware GLES2 smoothly.
 - **eMMC Controller:** fixed hardware interrupt lockups under intensive I/O (BR-013). DTS pins switched to `sdc1_default` (16 mA), max frequency capped at 100 MHz (`max-frequency = <100000000>`).
-- **Swap (zram):** [`zram.start`](zram.start) in `/etc/local.d` allocates `/dev/zram0` to ~50% RAM (lzo-rle, priority 100) and enables swap; zero eMMC wear.
+- **Swap (zram):** [`zram.start`](configs/openrc/zram.start) in `/etc/local.d` allocates `/dev/zram0` to ~50% RAM (lzo-rle, priority 100) and enables swap; zero eMMC wear.
 - **Touch Input:** Synaptics RMI4 I2C controller supported via `CONFIG_INPUT_EVDEV=y`. Node `/dev/input/event2` provides 10-point multitouch and bottom capacitive keys in `libinput` and `ztmetro` (or `cage` in alternate mode).
 - **PMI8950 Charging Controller (BR-014):**
   - Driver `CONFIG_CHARGER_QCOM_SMBCHG=y` built into kernel.
   - DTS enables `&pmi8950_smbcharger` and `&pmi8950_fg`, with `simple-battery` profile (3000 mAh, 3.4..4.4 V, 1.5 A charge limit).
-  - [`start-sshd.sh`](start-sshd.sh) sets charge current limit: `echo 1500000 > /sys/class/power_supply/qcom-smbchg-usb/input_current_limit`.
+  - [`configs/openrc/start-sshd.sh`](configs/openrc/start-sshd.sh) sets charge current limit: `echo 1500000 > /sys/class/power_supply/qcom-smbchg-usb/input_current_limit`.
   - Spontaneous Under-Voltage Lockout (UVLO) shutdowns resolved.
 - **Wi-Fi & Bluetooth (BR-015):**
   - Built-in drivers: `CONFIG_QCOM_WCNSS_PIL=y`, `CONFIG_QCOM_WCNSS_CTRL=y`, `CONFIG_WCN36XX=y`, `CONFIG_CFG80211=y`, `CONFIG_MAC80211=y`, `CONFIG_RFKILL=y`, `CONFIG_BT=y`, `CONFIG_BT_QCOMSMD=y`.
@@ -125,29 +125,29 @@ Port the LeEco Le 2 smartphone from its legacy vendor Android 3.10 kernel to mod
   - Firmware files `wcnss.mdt`, `wcnss.b00`..`b12` extracted from stock modem partition.
   - Authentic calibration file `WCNSS_qcom_wlan_nv.bin` (`0xCAFEBABE`, 31,723 B) and configs `WCNSS_qcom_cfg.ini`, `WCNSS_cfg.dat` loaded.
   - `wlan0` interface active: scans 2.4 GHz and 5 GHz (802.11ac) networks, Bluetooth `hci0` ready.
-  - **Wi-Fi Data Routing (BR-030):** With two uplinks (Wi-Fi + USB RNDIS), strict `rp_filter` dropped incoming `wlan0` packets when reverse route pointed to `usb0`. `start-sshd.sh` configures loose mode `rp_filter = 2` across `all`, `default`, and interfaces on start and watchdog; USB default route assigned fallback `metric 700` (Wi-Fi DHCP — `metric 303`). Throughput: ~5.4–6.3 MB/s on 5 GHz.
+  - **Wi-Fi Data Routing (BR-030):** With two uplinks (Wi-Fi + USB RNDIS), strict `rp_filter` dropped incoming `wlan0` packets when reverse route pointed to `usb0`. [`configs/openrc/start-sshd.sh`](configs/openrc/start-sshd.sh) configures loose mode `rp_filter = 2` across `all`, `default`, and interfaces on start and watchdog; USB default route assigned fallback `metric 700` (Wi-Fi DHCP — `metric 303`). Throughput: ~5.4–6.3 MB/s on 5 GHz.
   - **Permissions & Auto-bringup:**
     - Socket `/var/run/wpa_supplicant` granted `wheel` group (`ctrl_interface_group=wheel`), allowing unprivileged `pmos` user to run `wpa_cli` scans without `Permission denied`.
     - User `pmos` granted passwordless `sudo` rights for `/usr/local/bin/wifi-connect` to configure interfaces and run `udhcpc`.
-    - [`start-sshd.sh`](start-sshd.sh) boots **all** offline remoteprocs (ADSP & WCNSS); once `wlan0` is online, `wpa_supplicant` starts, followed by `udhcpc` upon `wpa_state=COMPLETED`. Background watchdog maintains lease and audio route.
+    - [`configs/openrc/start-sshd.sh`](configs/openrc/start-sshd.sh) boots **all** offline remoteprocs (ADSP & WCNSS); once `wlan0` is online, `wpa_supplicant` starts, followed by `udhcpc` upon `wpa_state=COMPLETED`. Background watchdog maintains lease and audio route.
     - Bluetooth `hci0` initializes automatically after WCNSS starts; `rfkill` unblocks, BlueZ 5.86 `bluetoothd` binds the adapter.
 - **Audio (BR-023, BR-024, BR-026):**
   - ADSP (`remoteproc0`) boots from `/lib/firmware/qcom/msm8976/adsp.*`; ALSA card — `card 0: msm8976leecos2`.
   - Speaker routing enabled via `QUIN_MI2S_RX Audio Mixer MultiMedia1`; amplifier on GPIO 132 controlled by kernel (`simple-amplifier`, consumer `enable`).
-  - `/etc/asound.conf` configures `card 0` as default for `amixer`/`aplay`.
-  - PipeWire session (`dbus-daemon --session`, `pipewire`, `wireplumber`, `pipewire-pulse`) launched from `start-sshd.sh` as user `pmos` (`audio` group member).
+  - [`configs/system/asound.conf`](configs/system/asound.conf) configures `card 0` as default for `amixer`/`aplay`.
+  - PipeWire session (`dbus-daemon --session`, `pipewire`, `wireplumber`, `pipewire-pulse`) launched from `configs/openrc/start-sshd.sh` as user `pmos` (`audio` group member).
   - Default card profile `off`; WirePlumber rule `51-msm8976.conf` selects `pro-audio`, sink `alsa_output.platform-c051000.sound.pro-output-0`.
   - **Volume Management (BR-035):** ztmetro adjusts media volume via `wpctl set-volume @DEFAULT_AUDIO_SINK@` only while `ztos-sounds` reports `audio-active`. Built from `/root/ztos-ztmetro/sounds`, installed to `/usr/local/bin`, and auto-spawned by ztmetro. Hardware keys control sink volume during active streams, and ring volume when idle (matching Windows Phone behavior).
-  - **Audio Reliability (BR-031, BR-034):** In WirePlumber configuration (`wireplumber.conf`, alias `51-msm8976.conf` on device), non-working nodes `pro-output-2` and `pro-input-1` are disabled, and `pro-output-0` priority raised. Watchdog in `start-sshd.sh` (~60 s cycle) detects ASM failures and recovers ADSP. Root cause resolved in kernel #19: `q6asm_dai_prepare()` now cleanly terminates existing ASM sessions when `state != IDLE` (post-`TRIGGER_STOP` `STOPPED`), preventing `EALREADY` errors and pointer nullification. Playback restricted to `S16_LE`. Verified via microphone: consecutive `pw-play` streams, PCM `RUNNING`, 1000 Hz tone, 0 ASM errors.
+  - **Audio Reliability (BR-031, BR-034):** In WirePlumber configuration ([`configs/system/wireplumber.conf`](configs/system/wireplumber.conf), alias `51-msm8976.conf` on device), non-working nodes `pro-output-2` and `pro-input-1` are disabled, and `pro-output-0` priority raised. Watchdog in [`configs/openrc/start-sshd.sh`](configs/openrc/start-sshd.sh) (~60 s cycle) detects ASM failures and recovers ADSP. Root cause resolved in kernel #19: `q6asm_dai_prepare()` now cleanly terminates existing ASM sessions when `state != IDLE` (post-`TRIGGER_STOP` `STOPPED`), preventing `EALREADY` errors and pointer nullification. Playback restricted to `S16_LE`. Verified via microphone: consecutive `pw-play` streams, PCM `RUNNING`, 1000 Hz tone, 0 ASM errors.
 
 ---
 
 ### 3.2 Graphical Environment & OpenRC
 - **OpenRC Services:** `seatd` and `wayland` services enabled in `default` runlevel.
-- **Clock Skew Remediation:** [`start-sshd.sh`](start-sshd.sh) verifies system clock; if RTC defaults to 1970, date is synchronized and stale cache `/var/cache/rc/deptree` flushed. Service [`clock.start`](clock.start) updates time via NTP in background (fallback: HTTP `Date`), ensuring TLS certificates validate properly.
+- **Clock Skew Remediation:** [`configs/openrc/start-sshd.sh`](configs/openrc/start-sshd.sh) verifies system clock; if RTC defaults to 1970, date is synchronized and stale cache `/var/cache/rc/deptree` flushed. Service [`configs/openrc/clock.start`](configs/openrc/clock.start) updates time via NTP in background (fallback: HTTP `Date`), ensuring TLS certificates validate properly.
 - **Compositor:** `ztmetro` (ztOS) launched under `pmos` with GLES2 hardware rendering, hosting `ztapps`, `ztsettings`, `ztpower`, and `ztos-sounds`. Compositor configurable via `COMPOSITOR` in `/etc/conf.d/wayland` (`ztmetro`, `labwc`, `cage`, `weston`).
-- **Session Bus & Sound:** `start-sshd.sh` creates `/run/user/1000`, starts user `dbus-daemon`, PipeWire, WirePlumber, and `pipewire-pulse`; `wayland.init` exports `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus`.
-- **Session Script (`cage` mode):** [`/usr/local/bin/zrn-session`](zrn-session) configures UI Scale 2.0 (`wlr-randr --output DSI-1 --scale 2.0`) and supervises mobile launcher loops.
+- **Session Bus & Sound:** [`configs/openrc/start-sshd.sh`](configs/openrc/start-sshd.sh) creates `/run/user/1000`, starts user `dbus-daemon`, PipeWire, WirePlumber, and `pipewire-pulse`; [`configs/openrc/wayland.init`](configs/openrc/wayland.init) exports `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus`.
+- **Session Script (`cage` mode):** [`/usr/local/bin/zrn-session`](scripts/zrn-session) configures UI Scale 2.0 (`wlr-randr --output DSI-1 --scale 2.0`) and supervises mobile launcher loops.
 
 ---
 
@@ -222,7 +222,7 @@ The application [`zrn-sdk/examples/launcher/main.c`](https://github.com/Zerone-L
 
 ## 4. Bootloader Configuration (`extlinux.conf`)
 
-Located on partition `p27` (`/boot/extlinux/extlinux.conf`):
+The source bootloader menu configuration is located at [`configs/boot/extlinux.conf`](configs/boot/extlinux.conf) and deployed to partition `p27` (`/boot/extlinux/extlinux.conf`):
 
 ```text
 timeout 10
@@ -247,20 +247,20 @@ label s2
 
 ## 5. Windows USB RNDIS Driver
 
-To access the device shell over USB from Windows, a signed test RNDIS driver is provided:
+To access the device shell over USB from Windows, a signed test RNDIS driver is provided in [`tools/windows-rndis/`](tools/windows-rndis/):
 
 | File | Description |
 |---|---|
-| [`windows_rndis_s2.inf`](windows_rndis_s2.inf) | Driver INF configuration (`CatalogFile=windows_rndis_s2.cat`) |
-| [`windows_rndis_s2.cat`](windows_rndis_s2.cat) | Signed security catalog (SHA-256) |
-| [`windows_rndis_s2.cer`](windows_rndis_s2.cer) | Public test certificate |
-| [`windows_rndis_s2.cdf`](windows_rndis_s2.cdf) | Catalog definition file for `makecat` |
+| [`tools/windows-rndis/windows_rndis_s2.inf`](tools/windows-rndis/windows_rndis_s2.inf) | Driver INF configuration (`CatalogFile=windows_rndis_s2.cat`) |
+| [`tools/windows-rndis/windows_rndis_s2.cat`](tools/windows-rndis/windows_rndis_s2.cat) | Signed security catalog (SHA-256) |
+| [`tools/windows-rndis/windows_rndis_s2.cer`](tools/windows-rndis/windows_rndis_s2.cer) | Public test certificate |
+| [`tools/windows-rndis/windows_rndis_s2.cdf`](tools/windows-rndis/windows_rndis_s2.cdf) | Catalog definition file for `makecat` |
 
 ### Installation on a new Windows host (Administrator PowerShell):
 ```powershell
-Import-Certificate .\windows_rndis_s2.cer -CertStoreLocation Cert:\LocalMachine\Root
-Import-Certificate .\windows_rndis_s2.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
-pnputil /add-driver .\windows_rndis_s2.inf /install
+Import-Certificate .\tools\windows-rndis\windows_rndis_s2.cer -CertStoreLocation Cert:\LocalMachine\Root
+Import-Certificate .\tools\windows-rndis\windows_rndis_s2.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
+pnputil /add-driver .\tools\windows-rndis\windows_rndis_s2.inf /install
 ```
 
 ### Host IP Configuration & SSH Connection:
@@ -299,13 +299,15 @@ Configures WPA Supplicant, establishes connection, and triggers DHCP lease (`udh
 | Path | Purpose |
 |---|---|
 | `README.md`, `README_en.md`, `LICENSE` | Documentation and project license |
+| `configs/` | System configurations: bootloader (`boot/`), OpenRC services (`openrc/`), system/audio settings (`system/`) |
 | `docs/` | Bug reports, changelog, audit notes, screenshots |
-| `kernel/` | Kernel patch, `.config`, DTS, NT35596s panel driver, `build.sh` |
-| `ztos-port/` | ztMETRO installation, `nmcli` wrapper, configs, patch `ztmetro-leeco-s2.patch` |
+| `kernel/` | Kernel & bootloader (`lk2nd`) patches, `.config`, DTS, NT35596s panel driver, `build.sh` |
+| `scripts/` | Deployment scripts (`deploy/`), app launchers, network utilities, key daemon |
+| `tests/` | Acoustic testing and hardware audio verification scripts |
+| `tools/` | Windows RNDIS driver (`windows-rndis/`), initramfs builder (`initramfs/`), panel generator, DTB builder |
 | `firmware-s2/` | WCNSS calibration files (`.bin`, `.ini`, `.dat`) |
-| `scripts/` | `wifi-scan`, `wifi-connect`, `nmcli`, `phone-keyd`, launch helpers |
-| `tiny_initramfs*/` | `init`, `init.switch`, manifests, busybox, and adbd; compiled cpios kept locally |
-| Root `*.start`, `*.init`, `*.conf`, `deploy_*.sh`, `windows_rndis_s2.*` | OpenRC scripts, startup, deployment, and Windows USB RNDIS driver |
+| `tiny_initramfs*/` | `init`, `init.switch`, manifests, busybox, and adbd for recovery and dual-boot |
+| `ztos-port/` | ztMETRO setup scripts, `nmcli` wrapper, tiles, configs, and patch `ztmetro-leeco-s2.patch` |
 
 Binary kernel images (`Image`, `Image.gz`), DTBs, `initramfs-*`, `*.img`, `*.wav`, logs, and temporary plots are excluded via `.gitignore` and distributed via GitHub Releases.
 
@@ -327,7 +329,7 @@ Binary kernel images (`Image`, `Image.gz`), DTBs, `initramfs-*`, `*.img`, `*.wav
 | `Image` (mainline #19) | 30,992,896 | `4A118193D61FBF308E217CEDEC06DFB7` | `kernel/build.sh` / Releases |
 | `Image.gz` (mainline #19) | 11,165,797 | `AF346E8195BDF2CD395C912136B63B25` | `kernel/build.sh` / Releases |
 | `msm8976-leeco-s2.dtb` | 48,453 | `EE58153D389DF343721881B6F4E4AFF8` | `kernel/build.sh` / Releases |
-| `initramfs-tiny.switch` | 1,349,500 | `E9FFB095ED5F32C5CCD2377CB195F77D` | `build_initramfs.py` / Releases |
+| `initramfs-tiny.switch` | 1,349,500 | `E9FFB095ED5F32C5CCD2377CB195F77D` | `tools/initramfs/build_initramfs.py` / Releases |
 | `firmware-s2/WCNSS_qcom_wlan_nv.bin` | 31,723 | `A2D9D2D9ACCA2C2E1D2D5B7600E4A105` | Tracked in git |
 | `vmlinuz` (legacy 3.10) | 8,911,188 | `D17B88CFBE011C0110EA57916AD1203C` | Fallback, excluded from git |
 | `s2.dtb` (legacy 3.10) | 278,801 | `D253FF3846C0D5B58E6BDF15F66C2A17` | Fallback, excluded from git |
@@ -353,8 +355,8 @@ cp "$ART/Image" "$ART/Image.gz" "$ART/dts/qcom/msm8976-leeco-s2.dtb" .
 ### 8.2 initramfs
 
 ```sh
-python3 build_initramfs.py tiny_manifest.txt initramfs-tiny.cpio tiny_initramfs
-python3 build_initramfs.py tiny_manifest.switch.txt initramfs-tiny.switch tiny_initramfs_switch
+python3 tools/initramfs/build_initramfs.py tools/initramfs/tiny_manifest.txt initramfs-tiny.cpio tiny_initramfs
+python3 tools/initramfs/build_initramfs.py tools/initramfs/tiny_manifest.switch.txt initramfs-tiny.switch tiny_initramfs_switch
 ```
 
 `tiny_initramfs*/bin/busybox` and `tiny_initramfs_switch/sbin/adbd` are tracked in git. When replacing, use statically built busybox and arm64-adbd binaries.
@@ -367,11 +369,11 @@ scp -i $KEY Image msm8976-leeco-s2.dtb initramfs-tiny.switch root@172.16.42.1:/t
 ssh -i $KEY root@172.16.42.1 "mount /dev/mmcblk0p27 /mnt/system; cp /tmp/Image /mnt/system/Image; cp /tmp/msm8976-leeco-s2.dtb /mnt/system/; cp /tmp/initramfs-tiny.switch /mnt/system/; cp /tmp/Image /Image; cp /tmp/msm8976-leeco-s2.dtb /; sync; md5sum /mnt/system/Image /Image; umount /mnt/system; reboot"
 ```
 
-Provide your own SSH key (`id_rsa` is ignored). `lk2nd` reads `Image` and DTB from the **root of p27** (`extlinux.conf`: `kernel /Image`, `fdt /msm8976-leeco-s2.dtb`).
+Provide your own SSH key (`id_rsa` is ignored). `lk2nd` reads `Image` and DTB from the **root of p27** (`configs/boot/extlinux.conf`: `kernel /Image`, `fdt /msm8976-leeco-s2.dtb`).
 
 ### 8.4 Rootfs, ztMETRO & Alternative Launcher
 
-`deploy_live.sh` (executed on device from `$D`) installs `start-sshd.sh`, `asound.conf`, `speaker.start`, WirePlumber rules, and registers `local`/`bluetooth` into runlevel `default`. Detailed instructions are available in [`docs/bug_report.md`](docs/bug_report.md), Section 3.4.
+`scripts/deploy/deploy_live.sh` (executed on device from `$D`) installs `start-sshd.sh`, `asound.conf`, `speaker.start`, WirePlumber rules, and registers `local`/`bluetooth` into runlevel `default`. Detailed instructions are available in [`docs/bug_report.md`](docs/bug_report.md), Section 3.4.
 
 To build ztMETRO on the device:
 

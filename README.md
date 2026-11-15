@@ -112,12 +112,12 @@
 - **DRM/KMS:** включены драйверы `CONFIG_DRM_MSM=y`, `CONFIG_DRM_MSM_MDP5=y`, `CONFIG_DRM_MSM_DSI=y`, `CONFIG_DRM_MSM_DSI_28NM_PHY=y`, встроенный драйвер панели `panel-leeco-s2-boe-nt35596s.c`. Узел `/dev/dri/card0` активен, статус `card0-DSI-1/status = connected`.
 - **GPU Adreno 510:** включены узлы `&adreno_gpu` и `&gpu_iommu` в Device Tree [`msm8976-leeco-s2.dts`](kernel/msm8976-leeco-s2.dts). Установлены прошивки `a530_pm4.fw` и `a530_pfp.fw`. Выделен CMA пул 96 МБ (`cma=96M` в cmdline). Wayland и приложения работают через аппаратный GLES2 без просадок FPS.
 - **eMMC контроллер:** устранен срыв прерываний hardware interrupt при интенсивной записи (BR-013). В DTS пины переведены на `sdc1_default` (16 мА), максимальная частота ограничена 100 МГц (`max-frequency = <100000000>`).
-- **Swap (zram):** [`zram.start`](zram.start) в `/etc/local.d` настраивает `/dev/zram0` на ~50% RAM (lzo-rle, приоритет 100) и включает swap; износ eMMC отсутствует.
+- **Swap (zram):** [`zram.start`](configs/openrc/zram.start) в `/etc/local.d` настраивает `/dev/zram0` на ~50% RAM (lzo-rle, приоритет 100) и включает swap; износ eMMC отсутствует.
 - **Сенсорный ввод:** контроллер тачскрина Synaptics RMI4 I2C поддерживается ядром с `CONFIG_INPUT_EVDEV=y`. Узел `/dev/input/event2` обеспечивает работу 10-точечного мультитача и нижних сенсорных клавиш в `libinput` и `ztmetro` (либо `cage` в альтернативном режиме).
 - **Контроллер зарядки PMI8950 (BR-014):**
   - Драйвер `CONFIG_CHARGER_QCOM_SMBCHG=y` встроен в ядро.
   - В DTS включены узлы `&pmi8950_smbcharger` и `&pmi8950_fg`, добавлен профиль `simple-battery` (3000 мАч, напряжение 3.4..4.4 В, ток заряда 1.5 А).
-  - В [`start-sshd.sh`](start-sshd.sh) выставлен лимит тока зарядки: `echo 1500000 > /sys/class/power_supply/qcom-smbchg-usb/input_current_limit`.
+  - В [`start-sshd.sh`](configs/openrc/start-sshd.sh) выставлен лимит тока зарядки: `echo 1500000 > /sys/class/power_supply/qcom-smbchg-usb/input_current_limit`.
   - Устранено внезапное отключение телефона по Under-Voltage Lockout (UVLO).
 - **Wi-Fi и Bluetooth (BR-015):**
   - В ядро встроены: `CONFIG_QCOM_WCNSS_PIL=y`, `CONFIG_QCOM_WCNSS_CTRL=y`, `CONFIG_WCN36XX=y`, `CONFIG_CFG80211=y`, `CONFIG_MAC80211=y`, `CONFIG_RFKILL=y`, `CONFIG_BT=y`, `CONFIG_BT_QCOMSMD=y`.
@@ -125,29 +125,29 @@
   - Прошивки `wcnss.mdt`, `wcnss.b00`..`b12` извлечены со стокового раздела `modem`.
   - Загружен аутентичный калибровочный файл `WCNSS_qcom_wlan_nv.bin` (`0xCAFEBABE`, 31 723 Б) и конфигурации `WCNSS_qcom_cfg.ini`, `WCNSS_cfg.dat`.
   - Интерфейс `wlan0` активен: подтверждено сканирование сетей 2.4 GHz и 5 GHz (802.11ac), Bluetooth `hci0` готов к работе.
-  - **Передача данных через Wi-Fi (BR-030).** При двух uplink'ах (Wi-Fi + USB RNDIS) strict `rp_filter` отбрасывал ответы, приходящие на `wlan0`, если обратный маршрут для источника указывал на `usb0` (симптом: связь ассоциирована, IP есть, LAN пингуется, интернета нет). `start-sshd.sh` выставляет loose-режим `rp_filter = 2` для `all`, `default` и всех интерфейсов при старте, в `wifi_bringup` и в watchdog'е, а USB-маршрут по умолчанию добавляется как fallback с `metric 700` (Wi-Fi от `udhcpc` — `metric 303`). Скорость: ~5.4–6.3 МБ/с на 5 GHz.
+  - **Передача данных через Wi-Fi (BR-030).** При двух uplink'ах (Wi-Fi + USB RNDIS) strict `rp_filter` отбрасывал ответы, приходящие на `wlan0`, если обратный маршрут для источника указывал на `usb0` (симптом: связь ассоциирована, IP есть, LAN пингуется, интернета нет). [`start-sshd.sh`](configs/openrc/start-sshd.sh) выставляет loose-режим `rp_filter = 2` для `all`, `default` и всех интерфейсов при старте, в `wifi_bringup` и в watchdog'е, а USB-маршрут по умолчанию добавляется как fallback с `metric 700` (Wi-Fi от `udhcpc` — `metric 303`). Скорость: ~5.4–6.3 МБ/с на 5 GHz.
   - **Права доступа и автозапуск:**
     - Сокет `/var/run/wpa_supplicant` переведен на группу `wheel` (`ctrl_interface_group=wheel`), чтобы непривилегированный пользователь интерфейса `pmos` мог выполнять команды сканирования `wpa_cli` без ошибки `Permission denied`.
     - Пользователю `pmos` настроен вызов `/usr/local/bin/wifi-connect` через `sudo` без пароля для настройки сетевых интерфейсов и запуска DHCP-клиента `udhcpc`.
-    - В [`start-sshd.sh`](start-sshd.sh) добавлен запуск **всех** offline remoteproc (ADSP и WCNSS), а не жёстко `remoteproc0`; после появления `wlan0` запускается `wpa_supplicant`, а при `wpa_state=COMPLETED` — `udhcpc`. Фоновый watchdog поддерживает интерфейс, DHCP-аренду и маршрут звука.
+    - В [`start-sshd.sh`](configs/openrc/start-sshd.sh) добавлен запуск **всех** offline remoteproc (ADSP и WCNSS), а не жёстко `remoteproc0`; после появления `wlan0` запускается `wpa_supplicant`, а при `wpa_state=COMPLETED` — `udhcpc`. Фоновый watchdog поддерживает интерфейс, DHCP-аренду и маршрут звука.
     - Bluetooth `hci0` появляется автоматически после старта WCNSS; `rfkill` разблокируется, `bluetoothd` BlueZ 5.86 подхватывает адаптер.
 - **Звук (BR-023, BR-024, BR-026):**
   - ADSP (`remoteproc0`) поднимается из `/lib/firmware/qcom/msm8976/adsp.*`; звуковая карта — `card 0: msm8976leecos2`.
   - Для вывода на динамик включается маршрут `QUIN_MI2S_RX Audio Mixer MultiMedia1`; усилитель на GPIO 132 управляется ядром (`simple-amplifier`, consumer `enable`).
-  - `/etc/asound.conf` назначает `card 0` устройством по умолчанию для `amixer`/`aplay`.
+  - [`configs/system/asound.conf`](configs/system/asound.conf) назначает `card 0` устройством по умолчанию для `amixer`/`aplay`.
   - PipeWire-сессия (`dbus-daemon --session`, `pipewire`, `wireplumber`, `pipewire-pulse`) стартует из `start-sshd.sh` от пользователя `pmos`; `pmos` добавлен в группу `audio`.
   - ACP-профиль карты по умолчанию — `off`; WirePlumber-правило `51-msm8976.conf` автоматически выбирает `pro-audio`, sink `alsa_output.platform-c051000.sound.pro-output-0`. UCM-профиля для платы пока нет.
   - **Громкость (BR-035).** ztmetro меняет media-громкость через `wpctl set-volume @DEFAULT_AUDIO_SINK@` только пока `ztos-sounds` сообщает `audio-active` (активное воспроизведение). Без этого демона клавиши громкости меняли только `ring_volume`, а звук играл на неизменном уровне. `ztos-sounds` собран из `/root/ztos-ztmetro/sounds` (нужен `pulseaudio-dev`), установлен в `/usr/local/bin` и автоматически запускается ztmetro. Проверено: при играющем потоке шаг громкости меняет sink (100% → 40%) и `media_volume` в конфиге; без медиа клавиши по-прежнему управляют ringer'ом (поведение Windows Phone).
-  - **Живучесть звука (BR-031, BR-034).** В конфиге WirePlumber (`wireplumber.conf`, он же `51-msm8976.conf` на устройстве) выключены нерабочие узлы `pro-output-2` (MultiMedia3, нет свободного backend'а при занятом Quinary MI2S) и `pro-input-1` (MultiMedia2, `arecord` → `EINVAL`), а `pro-output-0` поднят по приоритету. Сторож в `start-sshd.sh` (раз в ~60 с) при росте `q6asm_open_write failed` перезапускает ADSP, возвращает маршрут и профиль (кулдаун 300 с), а при `auto_null` перекидывает профиль `off` → `pro-audio` (кулдаун 120 с); эти меры остаются как страховка. Окончательная причина тишины найдена на уровне ядра: `q6asm_dai_prepare()` закрывал прошлую ASM-сессию только при `state == Q6ASM_STREAM_RUNNING`, а после `TRIGGER_STOP` состояние `STOPPED` (DSP-сессия жива); повторный `open_write` возвращал `EALREADY`/`error[9]`, error-path освобождал `audio_client` и обнулял указатель, после чего `prepare` навсегда падал с `private data null or audio client freed`, и WirePlumber уходил в `Dummy Output`. Исправлено в ядре #19: сессия закрывается при `state != IDLE`, `routing_err` переводит состояние в `STOPPED`, в `open_err` client больше не освобождается; форматы вывода дополнительно ограничены `S16_LE`. Проверено микрофоном: два `pw-play` подряд, PCM `RUNNING`, доминирующая частота 1000 Гц, `q6asm_open_write failed = 0`, sink остаётся `pro-output-0`. Захват с самой платы по-прежнему не работает (нет backend'а для MultiMedia2), поэтому акустика проверяется внешним микрофоном.
+  - **Живучесть звука (BR-031, BR-034).** В конфиге WirePlumber (`configs/system/wireplumber.conf`, он же `51-msm8976.conf` на устройстве) выключены нерабочие узлы `pro-output-2` (MultiMedia3, нет свободного backend'а при занятом Quinary MI2S) и `pro-input-1` (MultiMedia2, `arecord` → `EINVAL`), а `pro-output-0` поднят по приоритету. Сторож в [`start-sshd.sh`](configs/openrc/start-sshd.sh) (раз в ~60 с) при росте `q6asm_open_write failed` перезапускает ADSP, возвращает маршрут и профиль (кулдаун 300 с), а при `auto_null` перекидывает профиль `off` → `pro-audio` (кулдаун 120 с); эти меры остаются как страховка. Окончательная причина тишины найдена на уровне ядра: `q6asm_dai_prepare()` закрывал прошлую ASM-сессию только при `state == Q6ASM_STREAM_RUNNING`, а после `TRIGGER_STOP` состояние `STOPPED` (DSP-сессия жива); повторный `open_write` возвращал `EALREADY`/`error[9]`, error-path освобождал `audio_client` и обнулял указатель, после чего `prepare` навсегда падал с `private data null or audio client freed`, и WirePlumber уходил в `Dummy Output`. Исправлено в ядре #19: сессия закрывается при `state != IDLE`, `routing_err` переводит состояние в `STOPPED`, в `open_err` client больше не освобождается; форматы вывода дополнительно ограничены `S16_LE`. Проверено микрофоном: два `pw-play` подряд, PCM `RUNNING`, доминирующая частота 1000 Гц, `q6asm_open_write failed = 0`, sink остаётся `pro-output-0`. Захват с самой платы по-прежнему не работает (нет backend'а для MultiMedia2), поэтому акустика проверяется внешним микрофоном.
 
 ---
 
 ### 3.2 Графическая среда и автозапуск OpenRC
 - **OpenRC-сервисы:** службы `seatd` и `wayland` включены в уровень запуска `default`.
-- **Устранение Clock Skew:** в [`start-sshd.sh`](start-sshd.sh) встроена проверка системных часов: при обнаружении сброса RTC в 1970 год дата принудительно синхронизируется с актуальной и очищается устаревший кэш `/var/cache/rc/deptree`, благодаря чему все службы стартуют без пропуска. После boot сервис [`clock.start`](clock.start) в фоне уточняет время по NTP (fallback — HTTP `Date`), так как RTC на s2 не пишется; без этого TLS-сертификаты (badwolf/WebKit, Chromium) не проходят проверку.
+- **Устранение Clock Skew:** в [`start-sshd.sh`](configs/openrc/start-sshd.sh) встроена проверка системных часов: при обнаружении сброса RTC в 1970 год дата принудительно синхронизируется с актуальной и очищается устаревший кэш `/var/cache/rc/deptree`, благодаря чему все службы стартуют без пропуска. После boot сервис [`clock.start`](configs/openrc/clock.start) в фоне уточняет время по NTP (fallback — HTTP `Date`), так как RTC на s2 не пишется; без этого TLS-сертификаты (badwolf/WebKit, Chromium) не проходят проверку.
 - **Композитор:** `ztmetro` (ztOS) запускается от `pmos` с аппаратным рендерером GLES2; в нём работают `ztapps`, `ztsettings`, `ztpower` и `ztos-sounds`. Выбор композитора — `COMPOSITOR` в `/etc/conf.d/wayland` (`ztmetro`, `labwc`, `cage`, `weston`).
-- **Сессионная шина и звук:** `start-sshd.sh` создаёт `/run/user/1000`, поднимает пользовательский `dbus-daemon`, PipeWire, WirePlumber и `pipewire-pulse`; `wayland.init` передаёт приложениям `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus`.
-- **Сессионный скрипт (режим `cage`):** [`/usr/local/bin/zrn-session`](zrn-session) устанавливает масштаб UI Scale 2.0 (`wlr-randr --output DSI-1 --scale 2.0`) и поддерживает постоянный цикл работы мобильного лаунчера.
+- **Сессионная шина и звук:** [`start-sshd.sh`](configs/openrc/start-sshd.sh) создаёт `/run/user/1000`, поднимает пользовательский `dbus-daemon`, PipeWire, WirePlumber и `pipewire-pulse`; [`wayland.init`](configs/openrc/wayland.init) передаёт приложениям `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus`.
+- **Сессионный скрипт (режим `cage`):** [`/usr/local/bin/zrn-session`](scripts/zrn-session) устанавливает масштаб UI Scale 2.0 (`wlr-randr --output DSI-1 --scale 2.0`) и поддерживает постоянный цикл работы мобильного лаунчера.
 
 ---
 
@@ -223,7 +223,7 @@
 
 ## 4. Конфигурация меню загрузки (`extlinux.conf`)
 
-Файл расположен на разделе `p27` (`/boot/extlinux/extlinux.conf`):
+Исходный файл меню загрузки находится в [`configs/boot/extlinux.conf`](configs/boot/extlinux.conf) и разворачивается на раздел `p27` (`/boot/extlinux/extlinux.conf`):
 
 ```text
 timeout 10
@@ -248,20 +248,20 @@ label s2
 
 ## 5. Драйвер USB RNDIS для Windows
 
-Для подключения к консоли телефона через USB-кабель используется подписанный тестовый драйвер RNDIS:
+Для подключения к консоли телефона через USB-кабель используется подписанный тестовый драйвер RNDIS (каталог [`tools/windows-rndis/`](tools/windows-rndis/)):
 
 | Файл | Описание |
 |---|---|
-| [`windows_rndis_s2.inf`](windows_rndis_s2.inf) | INF-файл драйвера (`CatalogFile=windows_rndis_s2.cat`) |
-| [`windows_rndis_s2.cat`](windows_rndis_s2.cat) | Подписанный каталог безопасности (SHA-256) |
-| [`windows_rndis_s2.cer`](windows_rndis_s2.cer) | Публичный тестовый сертификат |
-| [`windows_rndis_s2.cdf`](windows_rndis_s2.cdf) | Определение каталога для `makecat` |
+| [`tools/windows-rndis/windows_rndis_s2.inf`](tools/windows-rndis/windows_rndis_s2.inf) | INF-файл драйвера (`CatalogFile=windows_rndis_s2.cat`) |
+| [`tools/windows-rndis/windows_rndis_s2.cat`](tools/windows-rndis/windows_rndis_s2.cat) | Подписанный каталог безопасности (SHA-256) |
+| [`tools/windows-rndis/windows_rndis_s2.cer`](tools/windows-rndis/windows_rndis_s2.cer) | Публичный тестовый сертификат |
+| [`tools/windows-rndis/windows_rndis_s2.cdf`](tools/windows-rndis/windows_rndis_s2.cdf) | Определение каталога для `makecat` |
 
 ### Установка на новом Windows-хосте (PowerShell от имени Администратора):
 ```powershell
-Import-Certificate .\windows_rndis_s2.cer -CertStoreLocation Cert:\LocalMachine\Root
-Import-Certificate .\windows_rndis_s2.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
-pnputil /add-driver .\windows_rndis_s2.inf /install
+Import-Certificate .\tools\windows-rndis\windows_rndis_s2.cer -CertStoreLocation Cert:\LocalMachine\Root
+Import-Certificate .\tools\windows-rndis\windows_rndis_s2.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
+pnputil /add-driver .\tools\windows-rndis\windows_rndis_s2.inf /install
 ```
 
 ### Настройка IP-адреса на ПК и подключение по SSH:
@@ -299,14 +299,16 @@ wifi-connect "Имя_Сети" "Пароль"
 
 | Путь | Назначение |
 |---|---|
-| `README.md`, `LICENSE` | Описание порта и лицензия |
-| `docs/` | bug report, changelog, анализ, скриншоты |
-| `kernel/` | патч ядра, `.config`, DTS, драйвер панели NT35596s, `build.sh` |
-| `ztos-port/` | установка ztMETRO, `nmcli`, конфиги, патч `ztmetro-leeco-s2.patch` |
-| `firmware-s2/` | калибровочные файлы WCNSS (`.bin`, `.ini`, `.dat`) |
-| `scripts/` | `wifi-scan`, `wifi-connect`, `nmcli`, `phone-keyd`, launch-хелперы |
-| `tiny_initramfs*/` | `init`, `init.switch`, манифесты, busybox и adbd; собранные cpio — локально |
-| Корневые `*.start`, `*.init`, `*.conf`, `deploy_*.sh`, `windows_rndis_s2.*` | OpenRC, запуск, деплой и USB RNDIS для Windows |
+| `README.md`, `README_en.md`, `LICENSE` | Описание порта и лицензия проекта |
+| `configs/` | Конфигурационные файлы: загрузчик (`boot/`), службы OpenRC (`openrc/`), системные настройки звука/экрана (`system/`) |
+| `docs/` | Журнал bug report, changelog, анализ подсистем, скриншоты |
+| `kernel/` | Патчи ядра и bootloader (`lk2nd`), `.config`, DTS, драйвер панели NT35596s, скрипт сборки `build.sh` |
+| `scripts/` | Скрипты развертывания (`deploy/`), лаунчеры приложений, сетевые утилиты и демоны |
+| `tests/` | Скрипты акустического тестирования и верификации звука микрофоном |
+| `tools/` | Драйвер Windows RNDIS (`windows-rndis/`), сборщик initramfs (`initramfs/`), генератор панели и сборщик DTB |
+| `firmware-s2/` | Калибровочные файлы беспроводного модуля WCNSS (`.bin`, `.ini`, `.dat`) |
+| `tiny_initramfs*/` | `init`, `init.switch`, busybox и adbd для аварийной и dual-boot загрузки |
+| `ztos-port/` | Скрипты установки ztMETRO, `nmcli`, плитки, конфиги и патч `ztmetro-leeco-s2.patch` |
 
 `Image`, `Image.gz`, DTB, `initramfs-*`, `*.img`, `*.wav`, логи и отладочные графики в git **не коммитятся** — они перечислены в `.gitignore` и публикуются как артефакты релиза.
 
@@ -328,7 +330,7 @@ wifi-connect "Имя_Сети" "Пароль"
 | `Image` (mainline #19) | 30 992 896 | `4A118193D61FBF308E217CEDEC06DFB7` | `kernel/build.sh` / Releases |
 | `Image.gz` (mainline #19) | 11 165 797 | `AF346E8195BDF2CD395C912136B63B25` | `kernel/build.sh` / Releases |
 | `msm8976-leeco-s2.dtb` | 48 453 | `EE58153D389DF343721881B6F4E4AFF8` | `kernel/build.sh` / Releases |
-| `initramfs-tiny.switch` | 1 349 500 | `E9FFB095ED5F32C5CCD2377CB195F77D` | `build_initramfs.py` / Releases |
+| `initramfs-tiny.switch` | 1 349 500 | `E9FFB095ED5F32C5CCD2377CB195F77D` | `tools/initramfs/build_initramfs.py` / Releases |
 | `firmware-s2/WCNSS_qcom_wlan_nv.bin` | 31 723 | `A2D9D2D9ACCA2C2E1D2D5B7600E4A105` | хранится в git |
 | `vmlinuz` (legacy 3.10) | 8 911 188 | `D17B88CFBE011C0110EA57916AD1203C` | fallback, не в git |
 | `s2.dtb` (legacy 3.10) | 278 801 | `D253FF3846C0D5B58E6BDF15F66C2A17` | fallback, не в git |
@@ -354,8 +356,8 @@ cp "$ART/Image" "$ART/Image.gz" "$ART/dts/qcom/msm8976-leeco-s2.dtb" .
 ### 8.2 initramfs
 
 ```sh
-python3 build_initramfs.py tiny_manifest.txt initramfs-tiny.cpio tiny_initramfs
-python3 build_initramfs.py tiny_manifest.switch.txt initramfs-tiny.switch tiny_initramfs_switch
+python3 tools/initramfs/build_initramfs.py tools/initramfs/tiny_manifest.txt initramfs-tiny.cpio tiny_initramfs
+python3 tools/initramfs/build_initramfs.py tools/initramfs/tiny_manifest.switch.txt initramfs-tiny.switch tiny_initramfs_switch
 ```
 
 `tiny_initramfs*/bin/busybox` и `tiny_initramfs_switch/sbin/adbd` уже лежат в репозитории. При замене используйте статически собранный busybox и arm64-adbd из TWRP/Android.
@@ -368,11 +370,11 @@ scp -i $KEY Image msm8976-leeco-s2.dtb initramfs-tiny.switch root@172.16.42.1:/t
 ssh -i $KEY root@172.16.42.1 "mount /dev/mmcblk0p27 /mnt/system; cp /tmp/Image /mnt/system/Image; cp /tmp/msm8976-leeco-s2.dtb /mnt/system/; cp /tmp/initramfs-tiny.switch /mnt/system/; cp /tmp/Image /Image; cp /tmp/msm8976-leeco-s2.dtb /; sync; md5sum /mnt/system/Image /Image; umount /mnt/system; reboot"
 ```
 
-`id_rsa` в репозиторий не входит; используйте свой SSH-ключ. lk2nd читает `Image` и DTB из **корня p27** (`extlinux.conf`: `kernel /Image`, `fdt /msm8976-leeco-s2.dtb`); копии в `/` на p56 нужны только для удобства и на загрузку не влияют.
+`id_rsa` в репозиторий не входит; используйте свой SSH-ключ. lk2nd читает `Image` и DTB из **корня p27** (`configs/boot/extlinux.conf`: `kernel /Image`, `fdt /msm8976-leeco-s2.dtb`); копии в `/` на p56 нужны только для удобства и на загрузку не влияют.
 
 ### 8.4 Rootfs, ztMETRO и альтернативный лаунчер
 
-`deploy_live.sh` (запускается на устройстве из каталога `$D`) устанавливает `start-sshd.sh`, `asound.conf`, `speaker.start`, WirePlumber-правило и включает `local`/`bluetooth` в runlevel `default`. Полный список файлов и порядок действий — в [`docs/bug_report.md`](docs/bug_report.md), раздел 3.4.
+`scripts/deploy/deploy_live.sh` (запускается на устройстве из каталога `$D`) устанавливает `start-sshd.sh`, `asound.conf`, `speaker.start`, WirePlumber-правило и включает `local`/`bluetooth` в runlevel `default`. Полный список файлов и порядок действий — в [`docs/bug_report.md`](docs/bug_report.md), раздел 3.4.
 
 ztMETRO собирается из upstream ztOS; на телефоне:
 
